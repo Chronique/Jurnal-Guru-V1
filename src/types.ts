@@ -18,6 +18,7 @@ export type JournalEntry = {
   learningObjective?: string;
   attendance: Attendance;
   studentAttendance?: Record<string, AttendanceStatus>;
+  absentStudentNames?: string;
   notes: string;
   createdAt: string;
 };

@@ -11,10 +11,10 @@ type LayoutProps = {
 export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
   const tabs = [
     { id: 'dashboard', label: 'Beranda', icon: Home },
+    { id: 'history', label: 'Riwayat', icon: BookOpen },
     { id: 'add', label: 'Isi Jurnal', icon: PlusCircle },
     { id: 'presensi', label: 'Presensi', icon: ClipboardCheck },
     { id: 'students', label: 'Data Siswa', icon: Users },
-    { id: 'history', label: 'Riwayat', icon: BookOpen },
   ];
 
   return (
@@ -85,10 +85,27 @@ export function Layout({ children, activeTab, onTabChange }: LayoutProps) {
 
       {/* Bottom nav for mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 pb-safe z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-        <div className="flex justify-around items-center h-16">
+        <div className="flex justify-around items-center h-16 relative">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+            
+            if (tab.id === 'add') {
+              return (
+                <div key={tab.id} className="relative w-full h-full flex justify-center">
+                  <button
+                    onClick={() => onTabChange(tab.id)}
+                    className={cn(
+                      "absolute -top-6 flex items-center justify-center w-16 h-16 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 border-4 border-slate-50",
+                      isActive ? "bg-indigo-700 text-white" : "bg-slate-900 text-white"
+                    )}
+                  >
+                    <Icon className="w-8 h-8" />
+                  </button>
+                </div>
+              );
+            }
+
             return (
               <button
                 key={tab.id}

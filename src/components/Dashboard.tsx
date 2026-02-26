@@ -55,12 +55,13 @@ export function Dashboard({ journals, onNavigate }: DashboardProps) {
           </div>
           <span className="text-3xl font-bold text-slate-900">
             {journals.reduce((acc, curr) => {
-              // Simple heuristic: 1 jam pelajaran = 45 mins. Let's just sum the count of journals as hours for now,
-              // or calculate from start/end time if we want to be precise.
-              return acc + 2; // Assuming 2 jam pelajaran per entry average
+              const start = parseInt(curr.startTime) || 1;
+              const end = parseInt(curr.endTime) || 1;
+              const hours = Math.max(1, end - start + 1);
+              return acc + hours;
             }, 0)}
           </span>
-          <span className="text-sm font-medium text-slate-500 mt-1">Jam Pelajaran</span>
+          <span className="text-sm font-medium text-slate-500 mt-1">Total Jam Pelajaran</span>
         </div>
       </div>
 
@@ -107,7 +108,7 @@ export function Dashboard({ journals, onNavigate }: DashboardProps) {
                     <p className="text-sm text-slate-500 mt-0.5 flex items-center">
                       <span className="font-medium text-slate-700">{journal.className}</span>
                       <span className="mx-2 w-1 h-1 rounded-full bg-slate-300"></span>
-                      {journal.startTime} - {journal.endTime}
+                      Jam ke {journal.startTime} - {journal.endTime}
                     </p>
                     <p className="text-sm text-slate-600 mt-1 line-clamp-1">{journal.topic}</p>
                   </div>

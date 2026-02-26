@@ -13,8 +13,8 @@ type JournalFormProps = {
 export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFormProps) {
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
-    startTime: '07:00',
-    endTime: '08:30',
+    startTime: '1',
+    endTime: '2',
     className: classes.length > 0 ? classes[0] : '',
     subject: '',
     topic: '',
@@ -70,10 +70,20 @@ export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFo
       return;
     }
     
+    const absentNames = classStudents
+      .filter(s => studentAttendance[s.id] && studentAttendance[s.id] !== 'present')
+      .map(s => {
+        const status = studentAttendance[s.id];
+        const code = status === 'sick' ? 'S' : status === 'permission' ? 'I' : 'A';
+        return `${s.name} (${code})`;
+      })
+      .join(', ');
+
     onSubmit({
       ...formData,
       attendance: calculateTotalAttendance(),
       studentAttendance,
+      absentStudentNames: absentNames,
     });
   };
 
@@ -113,28 +123,40 @@ export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFo
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Mulai</label>
-                <input
-                  type="time"
-                  name="startTime"
-                  required
-                  value={formData.startTime}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Selesai</label>
-                <input
-                  type="time"
-                  name="endTime"
-                  required
-                  value={formData.endTime}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900"
-                />
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Jam Mengajar (Ke-)</label>
+              <div className="flex items-center justify-between">
+                <div className="relative flex-1">
+                  <select
+                    name="startTime"
+                    value={formData.startTime}
+                    onChange={handleChange}
+                    className="w-full bg-transparent text-slate-900 font-bold text-lg focus:outline-none appearance-none cursor-pointer pr-8"
+                  >
+                    {[...Array(11)].map((_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none">
+                    <ClockIcon className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
+                <span className="text-slate-400 font-medium px-4">s/d</span>
+                <div className="relative flex-1">
+                  <select
+                    name="endTime"
+                    value={formData.endTime}
+                    onChange={handleChange}
+                    className="w-full bg-transparent text-slate-900 font-bold text-lg focus:outline-none appearance-none cursor-pointer pr-8 text-right"
+                  >
+                    {[...Array(11)].map((_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center pointer-events-none">
+                    <ClockIcon className="w-4 h-4 text-slate-400" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

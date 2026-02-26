@@ -87,7 +87,7 @@ export function History({ journals, onDelete }: HistoryProps) {
                     <p className="text-sm text-slate-500 mt-0.5 flex items-center">
                       <span className="font-medium text-slate-700">{journal.className}</span>
                       <span className="mx-2 w-1 h-1 rounded-full bg-slate-300"></span>
-                      {journal.startTime} - {journal.endTime}
+                      Jam ke {journal.startTime} - {journal.endTime}
                     </p>
                   </div>
                 </div>
@@ -120,7 +120,7 @@ export function History({ journals, onDelete }: HistoryProps) {
                       </p>
                       <p className="text-sm text-slate-600 mt-1 flex items-center">
                         <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                        {journal.startTime} - {journal.endTime} WIB
+                        Jam ke {journal.startTime} s/d {journal.endTime}
                       </p>
                     </div>
                     <div>
@@ -146,6 +146,12 @@ export function History({ journals, onDelete }: HistoryProps) {
                           <span className="block text-sm font-bold text-rose-700">{journal.attendance.absent}</span>
                         </div>
                       </div>
+                      {journal.absentStudentNames && (
+                        <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                          <p className="text-xs font-medium text-slate-500 mb-1">Siswa Tidak Hadir:</p>
+                          <p className="text-sm font-bold text-slate-700">{journal.absentStudentNames}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
