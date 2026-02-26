@@ -194,22 +194,25 @@ export function Students({ students, onAdd, onAddStudents, onDelete, onDeleteCla
                 <p className="text-sm text-slate-500 italic">Belum ada kelas.</p>
               )}
 
-              <form onSubmit={handleAddClass} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Nama kelas baru..."
-                  value={newClass}
-                  onChange={(e) => setNewClass(e.target.value)}
-                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
-                />
-                <button
-                  type="submit"
-                  disabled={!newClass.trim()}
-                  className="px-3 py-2 bg-slate-100 text-slate-700 font-medium text-sm rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50"
-                >
-                  Tambah
-                </button>
-              </form>
+              <div className="pt-3 mt-3 border-t border-slate-100">
+                <label className="block text-xs font-medium text-slate-500 mb-2">Atau buat kelas baru</label>
+                <form onSubmit={handleAddClass} className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    placeholder="Nama kelas..."
+                    value={newClass}
+                    onChange={(e) => setNewClass(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newClass.trim()}
+                    className="w-full px-4 py-2 bg-indigo-50 text-indigo-600 font-medium text-sm rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                  >
+                    Tambah Kelas
+                  </button>
+                </form>
+              </div>
             </div>
           </div>
 
