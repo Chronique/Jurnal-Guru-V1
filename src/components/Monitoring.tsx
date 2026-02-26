@@ -12,9 +12,9 @@ export function Monitoring({ journals }: MonitoringProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredJournals = journals.filter(journal => 
-    journal.teacherName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    journal.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    journal.className.toLowerCase().includes(searchTerm.toLowerCase())
+    (journal.teacherName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (journal.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (journal.className || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -75,7 +75,7 @@ export function Monitoring({ journals }: MonitoringProps) {
                           </span>
                           <span className="text-sm font-bold text-slate-900">{journal.subject}</span>
                         </div>
-                        <h4 className="text-lg font-bold text-slate-900 mt-1">{journal.teacherName}</h4>
+                        <h4 className="text-lg font-bold text-slate-900 mt-1">{journal.teacherName || 'Guru Tidak Diketahui'}</h4>
                         <p className="text-sm text-slate-600 mt-1 flex items-center">
                           <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
                           Jam ke {journal.startTime} s/d {journal.endTime}
