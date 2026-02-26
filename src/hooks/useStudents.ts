@@ -36,6 +36,14 @@ export function useStudents() {
     setStudents((prev) => [...prev, newStudent]);
   };
 
+  const addStudents = (newStudents: Omit<Student, 'id'>[]) => {
+    const studentsWithIds = newStudents.map(student => ({
+      ...student,
+      id: uuidv4(),
+    }));
+    setStudents((prev) => [...prev, ...studentsWithIds]);
+  };
+
   const updateStudent = (id: string, updatedStudent: Partial<Student>) => {
     setStudents((prev) =>
       prev.map((student) => (student.id === id ? { ...student, ...updatedStudent } : student))
@@ -53,6 +61,7 @@ export function useStudents() {
   return {
     students,
     addStudent,
+    addStudents,
     updateStudent,
     deleteStudent,
     deleteClass,

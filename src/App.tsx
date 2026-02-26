@@ -16,7 +16,7 @@ import { useStudents } from './hooks/useStudents';
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { journals, addJournal, deleteJournal } = useJournals();
-  const { students, addStudent, deleteStudent, deleteClass } = useStudents();
+  const { students, addStudent, addStudents, deleteStudent, deleteClass } = useStudents();
 
   // Get unique classes from students
   const classes = Array.from(new Set(students.map(s => s.className))).sort() as string[];
@@ -45,6 +45,7 @@ export default function App() {
         <Students 
           students={students} 
           onAdd={addStudent} 
+          onAddStudents={addStudents}
           onDelete={deleteStudent} 
           onDeleteClass={deleteClass}
         />

@@ -1,19 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Student } from '../hooks/useStudents';
-import { Users, Plus, Trash2, Search } from 'lucide-react';
+import { Users, Plus, Trash2, Search, Upload } from 'lucide-react';
 
 type StudentsProps = {
   students: Student[];
   onAdd: (student: Omit<Student, 'id'>) => void;
+  onAddStudents: (students: Omit<Student, 'id'>[]) => void;
   onDelete: (id: string) => void;
   onDeleteClass: (className: string) => void;
 };
 
-export function Students({ students, onAdd, onDelete, onDeleteClass }: StudentsProps) {
+export function Students({ students, onAdd, onAddStudents, onDelete, onDeleteClass }: StudentsProps) {
   const [selectedClass, setSelectedClass] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [newStudent, setNewStudent] = useState({ name: '', nis: '' });
   const [newClass, setNewClass] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Get unique classes from students
   const classes = Array.from(new Set(students.map(s => s.className))).sort();
@@ -59,6 +61,56 @@ export function Students({ students, onAdd, onDelete, onDeleteClass }: StudentsP
     if (confirm(`Apakah Anda yakin ingin menghapus kelas ${selectedClass} beserta seluruh data siswanya?`)) {
       onDeleteClass(selectedClass);
       setSelectedClass('');
+    }
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedClass) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      if (!text) return;
+
+      const lines = text.split('\n');
+      const newStudents: Omit<Student, 'id'>[] = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Try to split by comma or semicolon
+        const separator = line.includes(';') ? ';' : ',';
+        const parts = line.split(separator);
+        
+        if (parts.length >= 2) {
+          const nis = parts[0].trim();
+          const name = parts[1].trim();
+          
+          // Skip header row if it exists
+          if (nis.toLowerCase() === 'nis' || name.toLowerCase() === 'nama' || name.toLowerCase() === 'nama siswa') continue;
+
+          newStudents.push({
+            nis,
+            name,
+            className: selectedClass
+          });
+        }
+      }
+
+      if (newStudents.length > 0) {
+        onAddStudents(newStudents);
+        alert(`Berhasil mengimpor ${newStudents.length} siswa ke kelas ${selectedClass}`);
+      } else {
+        alert('Format CSV tidak valid atau kosong. Gunakan format: NIS,Nama');
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -126,10 +178,23 @@ export function Students({ students, onAdd, onDelete, onDeleteClass }: StudentsP
 
           {selectedClass && (
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center">
-                <Plus className="w-4 h-4 mr-1.5 text-indigo-600" />
-                Tambah Siswa Baru
-              </h3>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <Plus className="w-4 h-4 mr-1.5 text-indigo-600" />
+                  Tambah Siswa Baru
+                </h3>
+                <label className="cursor-pointer text-xs font-medium text-indigo-600 hover:text-indigo-700 flex items-center bg-indigo-50 px-2 py-1 rounded-md transition-colors">
+                  <Upload className="w-3 h-3 mr-1" />
+                  Import CSV
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    className="hidden" 
+                    onChange={handleImport} 
+                    ref={fileInputRef}
+                  />
+                </label>
+              </div>
               <form onSubmit={handleAdd} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">NIS</label>
@@ -167,8 +232,8 @@ export function Students({ students, onAdd, onDelete, onDeleteClass }: StudentsP
         {/* Right Column: Student List */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[600px]">
           <div className="p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <h3 className="text-base font-bold text-slate-900">
-              Daftar Siswa {selectedClass && <span className="text-indigo-600">({filteredStudents.length})</span>}
+            <h3 className="text-base font-bold text-slate-900 flex items-center">
+              Daftar Siswa {selectedClass && <span className="text-indigo-600 ml-1">({filteredStudents.length})</span>}
             </h3>
             <div className="relative w-full sm:w-64">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
