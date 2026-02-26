@@ -15,6 +15,7 @@ export type JournalEntry = {
   className: string;
   subject: string;
   topic: string;
+  learningObjective?: string;
   attendance: Attendance;
   studentAttendance?: Record<string, AttendanceStatus>;
   notes: string;

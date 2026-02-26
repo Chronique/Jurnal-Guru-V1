@@ -18,6 +18,7 @@ export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFo
     className: classes.length > 0 ? classes[0] : '',
     subject: '',
     topic: '',
+    learningObjective: '',
     notes: '',
   });
 
@@ -183,17 +184,30 @@ export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFo
             <FileText className="w-4 h-4 mr-2 text-slate-400" />
             Materi Pembelajaran
           </h3>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">Topik / Materi</label>
-            <textarea
-              name="topic"
-              required
-              rows={3}
-              placeholder="Jelaskan materi yang diajarkan hari ini..."
-              value={formData.topic}
-              onChange={handleChange}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 resize-none"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Topik / Materi</label>
+              <textarea
+                name="topic"
+                required
+                rows={3}
+                placeholder="Jelaskan materi yang diajarkan hari ini..."
+                value={formData.topic}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 resize-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Tujuan Pembelajaran</label>
+              <textarea
+                name="learningObjective"
+                rows={3}
+                placeholder="Tujuan yang ingin dicapai pada pembelajaran ini..."
+                value={formData.learningObjective}
+                onChange={handleChange}
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 resize-none"
+              />
+            </div>
           </div>
         </div>
 

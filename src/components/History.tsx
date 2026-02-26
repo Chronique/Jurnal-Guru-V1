@@ -156,6 +156,15 @@ export function History({ journals, onDelete }: HistoryProps) {
                     </div>
                   </div>
 
+                  {journal.learningObjective && (
+                    <div className="mt-4">
+                      <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tujuan Pembelajaran</h5>
+                      <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 text-sm text-indigo-900 whitespace-pre-wrap">
+                        {journal.learningObjective}
+                      </div>
+                    </div>
+                  )}
+
                   {journal.notes && (
                     <div className="mt-4">
                       <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Catatan Tambahan</h5>
