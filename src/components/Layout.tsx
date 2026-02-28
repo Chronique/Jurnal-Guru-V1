@@ -1,7 +1,9 @@
 import { ReactNode, useState, useEffect, FormEvent } from 'react';
-import { Home, PlusCircle, BookOpen, ClipboardCheck, Users, Star, LogOut, Shield, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save } from 'lucide-react';
+import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
+
+const SCHOOL_ICON = 'https://raw.githubusercontent.com/fenomenaaneh/SMPN21-JAMBI/main/public/icon.png';
 
 type LayoutProps = {
   children: ReactNode;
@@ -62,15 +64,34 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
 
   const tabs = user.role === 'admin' ? adminTabs : guruTabs;
 
+  const SchoolLogo = ({ className }: { className: string }) => (
+    <img
+      src={SCHOOL_ICON}
+      alt="Logo"
+      className={className}
+      onError={(e) => {
+        const t = e.currentTarget;
+        t.style.display = 'none';
+        const next = t.nextElementSibling as HTMLElement;
+        if (next) next.style.display = 'flex';
+      }}
+    />
+  );
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      {/* Sidebar for desktop */}
+      {/* Sidebar desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 shadow-sm z-10 transition-colors duration-200">
         <div className="p-6 flex items-center space-x-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
+          <SchoolLogo className="w-9 h-9 object-contain flex-shrink-0" />
+          {/* Fallback */}
+          <div style={{ display: 'none' }} className="w-9 h-9 bg-indigo-600 rounded-lg items-center justify-center shadow-sm flex-shrink-0">
             <BookOpen className="w-5 h-5 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Jurnal Guru</h1>
+          <div>
+            <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight leading-tight">Jurnal Guru</h1>
+            <p className="text-[10px] text-slate-400 leading-tight">SMPN 21 Jambi</p>
+          </div>
         </div>
         <nav className="flex-1 px-4 space-y-1.5 mt-4">
           {tabs.map((tab) => {
@@ -97,47 +118,24 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
           {isMenuOpen && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
               <div className="p-2 space-y-1">
-                <button
-                  onClick={() => {
-                    setIsPasswordModalOpen(true);
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                >
-                  <KeyRound className="w-4 h-4 mr-3 text-slate-400" />
-                  Ganti Password
+                <button onClick={() => { setIsPasswordModalOpen(true); setIsMenuOpen(false); }}
+                  className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  <KeyRound className="w-4 h-4 mr-3 text-slate-400" />Ganti Password
                 </button>
-                <button
-                  onClick={toggleDarkMode}
-                  className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                >
-                  {isDarkMode ? (
-                    <>
-                      <Sun className="w-4 h-4 mr-3 text-slate-400" />
-                      Mode Terang
-                    </>
-                  ) : (
-                    <>
-                      <Moon className="w-4 h-4 mr-3 text-slate-400" />
-                      Mode Gelap
-                    </>
-                  )}
+                <button onClick={toggleDarkMode}
+                  className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                  {isDarkMode ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</> : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
                 </button>
                 <div className="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-                <button
-                  onClick={onLogout}
-                  className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
-                >
-                  <LogOut className="w-4 h-4 mr-3" />
-                  Keluar
+                <button onClick={onLogout}
+                  className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
+                  <LogOut className="w-4 h-4 mr-3" />Keluar
                 </button>
               </div>
             </div>
           )}
-          <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="w-full flex items-center justify-between px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors"
-          >
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)}
+            className="w-full flex items-center justify-between px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm border border-indigo-200 dark:border-indigo-500/30 uppercase">
                 {user.name.charAt(0)}
@@ -147,11 +145,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{user.role}</p>
               </div>
             </div>
-            {isMenuOpen ? (
-              <ChevronDown className="w-4 h-4 text-slate-400" />
-            ) : (
-              <ChevronUp className="w-4 h-4 text-slate-400" />
-            )}
+            {isMenuOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
           </button>
         </div>
       </aside>
@@ -159,59 +153,38 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
         {/* Mobile header */}
-        <header className="md:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-4 flex items-center justify-between sticky top-0 z-20 shadow-sm transition-colors duration-200">
+        <header className="md:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm transition-colors duration-200">
           <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 bg-indigo-600 rounded-md flex items-center justify-center shadow-sm">
+            <SchoolLogo className="w-8 h-8 object-contain" />
+            <div style={{ display: 'none' }} className="w-7 h-7 bg-indigo-600 rounded-md items-center justify-center shadow-sm flex">
               <BookOpen className="w-4 h-4 text-white" />
             </div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Jurnal Guru</h1>
+            <div>
+              <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight leading-tight">Jurnal Guru</h1>
+              <p className="text-[9px] text-slate-400 leading-tight">SMPN 21 Jambi</p>
+            </div>
           </div>
           <div className="flex items-center space-x-3 relative">
-            <button 
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="flex items-center space-x-2"
-            >
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm border border-indigo-200 dark:border-indigo-500/30 uppercase">
                 {user.name.charAt(0)}
               </div>
             </button>
-            
             {isMenuOpen && (
               <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
                 <div className="p-2 space-y-1">
-                  <button
-                    onClick={() => {
-                      setIsPasswordModalOpen(true);
-                      setIsMenuOpen(false);
-                    }}
-                    className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    <KeyRound className="w-4 h-4 mr-3 text-slate-400" />
-                    Ganti Password
+                  <button onClick={() => { setIsPasswordModalOpen(true); setIsMenuOpen(false); }}
+                    className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                    <KeyRound className="w-4 h-4 mr-3 text-slate-400" />Ganti Password
                   </button>
-                  <button
-                    onClick={toggleDarkMode}
-                    className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    {isDarkMode ? (
-                      <>
-                        <Sun className="w-4 h-4 mr-3 text-slate-400" />
-                        Mode Terang
-                      </>
-                    ) : (
-                      <>
-                        <Moon className="w-4 h-4 mr-3 text-slate-400" />
-                        Mode Gelap
-                      </>
-                    )}
+                  <button onClick={toggleDarkMode}
+                    className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                    {isDarkMode ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</> : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
                   </button>
                   <div className="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
-                  <button
-                    onClick={onLogout}
-                    className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
-                  >
-                    <LogOut className="w-4 h-4 mr-3" />
-                    Keluar
+                  <button onClick={onLogout}
+                    className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
+                    <LogOut className="w-4 h-4 mr-3" />Keluar
                   </button>
                 </div>
               </div>
@@ -226,13 +199,12 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
         </div>
       </main>
 
-      {/* Bottom nav for mobile */}
+      {/* Bottom nav mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 pb-safe z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] transition-colors duration-200">
         <div className="flex justify-around items-center h-16 relative">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
-            
             if (tab.id === 'add') {
               return (
                 <div key={tab.id} className="relative w-full h-full flex justify-center">
@@ -248,19 +220,12 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 </div>
               );
             }
-
             return (
-              <button
-                key={tab.id}
-                onClick={() => onTabChange(tab.id)}
-                className={cn(
-                  "flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors relative",
+              <button key={tab.id} onClick={() => onTabChange(tab.id)}
+                className={cn("flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors relative",
                   isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
-                )}
-              >
-                {isActive && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-indigo-600 dark:bg-indigo-400 rounded-b-full" />
-                )}
+                )}>
+                {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-indigo-600 dark:bg-indigo-400 rounded-b-full" />}
                 <Icon className={cn("w-6 h-6 mt-1", isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500")} />
                 <span className="text-[10px] font-medium">{tab.label}</span>
               </button>
@@ -275,42 +240,27 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/50">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center">
-                <KeyRound className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
-                Ganti Password
+                <KeyRound className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />Ganti Password
               </h3>
-              <button 
-                onClick={() => setIsPasswordModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-              >
+              <button onClick={() => setIsPasswordModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <form onSubmit={handlePasswordSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru</label>
-                <input
-                  type="password"
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
+                <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                   className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white"
-                  placeholder="Masukkan password baru"
-                />
+                  placeholder="Masukkan password baru" />
               </div>
               <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsPasswordModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl mr-2 transition-colors"
-                >
+                <button type="button" onClick={() => setIsPasswordModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl mr-2 transition-colors">
                   Batal
                 </button>
-                <button
-                  type="submit"
-                  className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium text-sm hover:bg-indigo-700 transition-colors shadow-sm"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  Simpan
+                <button type="submit"
+                  className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-xl font-medium text-sm hover:bg-indigo-700 transition-colors shadow-sm">
+                  <Save className="w-4 h-4 mr-2" />Simpan
                 </button>
               </div>
             </form>
