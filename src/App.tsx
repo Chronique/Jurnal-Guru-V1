@@ -24,10 +24,13 @@ export default function App() {
     return saved ? JSON.parse(saved) : null;
   });
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  const { journals, addJournal, updateJournal, deleteJournal } = useJournals();
-  const { students, addStudent, addStudents, deleteStudent, deleteClass } = useStudents();
-  const { users, addUser, updateUser, deleteUser } = useUsers();
+
+  const { journals, loading: loadingJournals, error: errorJournals, addJournal, updateJournal, deleteJournal } = useJournals();
+  const { students, loading: loadingStudents, error: errorStudents, addStudent, addStudents, deleteStudent, deleteClass } = useStudents();
+  const { users, loading: loadingUsers, error: errorUsers, addUser, updateUser, deleteUser } = useUsers();
+
+  const isLoading = loadingJournals || loadingStudents || loadingUsers;
+  const errors = [errorJournals, errorStudents, errorUsers].filter(Boolean);
 
   useEffect(() => {
     if (user) {
@@ -37,14 +40,12 @@ export default function App() {
     }
   }, [user]);
 
-  // Set default tab based on role when user changes
   useEffect(() => {
     if (user) {
       setActiveTab(user.role === 'admin' ? 'admin-dashboard' : 'dashboard');
     }
   }, [user]);
 
-  // Get unique classes from students
   const classes = Array.from(new Set(students.map(s => s.className))).sort() as string[];
 
   const handleAddJournal = (entry: any) => {
@@ -71,21 +72,54 @@ export default function App() {
     }
   };
 
-  if (!user) {
-    return <Login users={users} onLogin={handleLogin} />;
+  // Tampilkan loading screen saat data pertama kali dimuat dari Redis
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        <p className="text-slate-500 font-medium text-sm">Memuat data dari server...</p>
+      </div>
+    );
   }
 
-  // Filter journals for guru (only their own)
+  if (!user) {
+    return (
+      <div>
+        {errors.length > 0 && (
+          <div className="fixed top-4 right-4 z-50 space-y-2">
+            {errors.map((err, i) => (
+              <div key={i} className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm shadow-sm max-w-sm">
+                ⚠️ {err}
+              </div>
+            ))}
+          </div>
+        )}
+        <Login users={users} onLogin={handleLogin} />
+      </div>
+    );
+  }
+
   const guruJournals = journals.filter(j => j.teacherId === user.id);
 
   return (
-    <Layout 
-      activeTab={activeTab} 
-      onTabChange={setActiveTab} 
-      user={user} 
+    <Layout
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      user={user}
       onLogout={handleLogout}
       onChangePassword={handleChangePassword}
     >
+      {/* Error banner */}
+      {errors.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {errors.map((err, i) => (
+            <div key={i} className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm">
+              ⚠️ {err}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Guru Routes */}
       {user.role === 'guru' && (
         <>
@@ -93,26 +127,26 @@ export default function App() {
             <Dashboard journals={guruJournals} onNavigate={setActiveTab} />
           )}
           {activeTab === 'add' && (
-            <JournalForm 
-              onSubmit={handleAddJournal} 
+            <JournalForm
+              onSubmit={handleAddJournal}
               onCancel={() => setActiveTab('dashboard')}
               classes={classes}
               students={students}
             />
           )}
           {activeTab === 'penilaian' && (
-            <Penilaian 
-              students={students} 
-              journals={guruJournals} 
-              onUpdateJournal={updateJournal} 
+            <Penilaian
+              students={students}
+              journals={guruJournals}
+              onUpdateJournal={updateJournal}
             />
           )}
           {activeTab === 'students' && (
-            <Students 
-              students={students} 
-              onAdd={addStudent} 
+            <Students
+              students={students}
+              onAdd={addStudent}
               onAddStudents={addStudents}
-              onDelete={deleteStudent} 
+              onDelete={deleteStudent}
               onDeleteClass={deleteClass}
             />
           )}
@@ -151,11 +185,11 @@ export default function App() {
             <Monitoring journals={journals} students={students} />
           )}
           {activeTab === 'akun' && (
-            <Akun 
-              users={users} 
-              onAdd={addUser} 
-              onUpdate={updateUser} 
-              onDelete={deleteUser} 
+            <Akun
+              users={users}
+              onAdd={addUser}
+              onUpdate={updateUser}
+              onDelete={deleteUser}
             />
           )}
         </>
@@ -163,4 +197,3 @@ export default function App() {
     </Layout>
   );
 }
-
