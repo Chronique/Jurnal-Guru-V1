@@ -1,5 +1,5 @@
 import { ReactNode, useState, useEffect, FormEvent } from 'react';
-import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save } from 'lucide-react';
+import { Home, PlusCircle, BookOpen, Users, Star, SquareUser, LogOut, Shield, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
 
@@ -48,18 +48,21 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
     }
   };
 
+  // Guru: tidak ada menu Data Siswa — siswa dikelola admin
   const guruTabs = [
-    { id: 'dashboard', label: 'Beranda', icon: Home },
-    { id: 'history', label: 'Riwayat', icon: BookOpen },
-    { id: 'add', label: 'Isi Jurnal', icon: PlusCircle },
-    { id: 'penilaian', label: 'Penilaian', icon: Star },
-    { id: 'students', label: 'Data Siswa', icon: Users },
+    { id: 'dashboard',  label: 'Beranda',   icon: Home },
+    { id: 'history',    label: 'Riwayat',   icon: BookOpen },
+    { id: 'add',        label: 'Isi Jurnal', icon: PlusCircle },
+    { id: 'penilaian',  label: 'Penilaian', icon: Star },
+    { id: 'rekapkehadiran',  label: 'Kehadiran', icon: SquareUser },
   ];
 
+  // Admin: tambah Data Siswa
   const adminTabs = [
-    { id: 'admin-dashboard', label: 'Beranda', icon: Home },
-    { id: 'monitoring', label: 'Monitoring', icon: Activity },
-    { id: 'akun', label: 'Akun', icon: Shield },
+    { id: 'admin-dashboard', label: 'Beranda',     icon: Home },
+    { id: 'monitoring',      label: 'Monitoring',  icon: Activity },
+    { id: 'students',        label: 'Data Siswa',  icon: Users },
+    { id: 'akun',            label: 'Akun',        icon: Shield },
   ];
 
   const tabs = user.role === 'admin' ? adminTabs : guruTabs;
@@ -84,7 +87,6 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 shadow-sm z-10 transition-colors duration-200">
         <div className="p-6 flex items-center space-x-3">
           <SchoolLogo className="w-9 h-9 object-contain flex-shrink-0" />
-          {/* Fallback */}
           <div style={{ display: 'none' }} className="w-9 h-9 bg-indigo-600 rounded-lg items-center justify-center shadow-sm flex-shrink-0">
             <BookOpen className="w-5 h-5 text-white" />
           </div>
@@ -93,6 +95,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             <p className="text-[10px] text-slate-400 leading-tight">SMPN 21 Jambi</p>
           </div>
         </div>
+
         <nav className="flex-1 px-4 space-y-1.5 mt-4">
           {tabs.map((tab) => {
             const Icon = tab.icon;
@@ -114,6 +117,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             );
           })}
         </nav>
+
         <div className="p-4 border-t border-slate-200 dark:border-slate-700 relative">
           {isMenuOpen && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
@@ -124,9 +128,11 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 </button>
                 <button onClick={toggleDarkMode}
                   className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                  {isDarkMode ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</> : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
+                  {isDarkMode
+                    ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</>
+                    : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
                 </button>
-                <div className="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
+                <div className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                 <button onClick={onLogout}
                   className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
                   <LogOut className="w-4 h-4 mr-3" />Keluar
@@ -145,7 +151,9 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{user.role}</p>
               </div>
             </div>
-            {isMenuOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
+            {isMenuOpen
+              ? <ChevronDown className="w-4 h-4 text-slate-400" />
+              : <ChevronUp className="w-4 h-4 text-slate-400" />}
           </button>
         </div>
       </aside>
@@ -165,7 +173,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             </div>
           </div>
           <div className="flex items-center space-x-3 relative">
-            <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="flex items-center space-x-2">
+            <button onClick={() => setIsMenuOpen(!isMenuOpen)}>
               <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm border border-indigo-200 dark:border-indigo-500/30 uppercase">
                 {user.name.charAt(0)}
               </div>
@@ -179,9 +187,11 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                   </button>
                   <button onClick={toggleDarkMode}
                     className="w-full flex items-center px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                    {isDarkMode ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</> : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
+                    {isDarkMode
+                      ? <><Sun className="w-4 h-4 mr-3 text-slate-400" />Mode Terang</>
+                      : <><Moon className="w-4 h-4 mr-3 text-slate-400" />Mode Gelap</>}
                   </button>
-                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-1"></div>
+                  <div className="h-px bg-slate-200 dark:bg-slate-700 my-1" />
                   <button onClick={onLogout}
                     className="w-full flex items-center px-3 py-2 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors">
                     <LogOut className="w-4 h-4 mr-3" />Keluar
@@ -193,7 +203,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
-          <div className="max-w-3xl mx-auto w-full">
+          <div className={`mx-auto w-full ${activeTab === 'rekapkehadiran' ? 'max-w-6xl' : 'max-w-3xl'}`}>
             {children}
           </div>
         </div>
@@ -205,6 +215,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+
             if (tab.id === 'add') {
               return (
                 <div key={tab.id} className="relative w-full h-full flex justify-center">
@@ -220,9 +231,11 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 </div>
               );
             }
+
             return (
               <button key={tab.id} onClick={() => onTabChange(tab.id)}
-                className={cn("flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors relative",
+                className={cn(
+                  "flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors relative",
                   isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                 )}>
                 {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-12 h-1 bg-indigo-600 dark:bg-indigo-400 rounded-b-full" />}

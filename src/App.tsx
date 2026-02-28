@@ -9,6 +9,7 @@ import { Dashboard } from './components/Dashboard';
 import { JournalForm } from './components/JournalForm';
 import { History } from './components/History';
 import { Penilaian } from './components/Penilaian';
+import { RekapKehadiran } from './components/RekapKehadiran';
 import { Students } from './components/Students';
 import { Login } from './components/Login';
 import { Akun } from './components/Akun';
@@ -57,13 +58,8 @@ export default function App() {
     setActiveTab('history');
   };
 
-  const handleLogin = (loggedInUser: User) => {
-    setUser(loggedInUser);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-  };
+  const handleLogin = (loggedInUser: User) => setUser(loggedInUser);
+  const handleLogout = () => setUser(null);
 
   const handleChangePassword = (newPassword: string) => {
     if (user) {
@@ -72,7 +68,6 @@ export default function App() {
     }
   };
 
-  // Tampilkan loading screen saat data pertama kali dimuat dari Redis
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
@@ -109,7 +104,6 @@ export default function App() {
       onLogout={handleLogout}
       onChangePassword={handleChangePassword}
     >
-      {/* Error banner */}
       {errors.length > 0 && (
         <div className="mb-4 space-y-2">
           {errors.map((err, i) => (
@@ -120,7 +114,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Guru Routes */}
+      {/* ── GURU ROUTES ── */}
       {user.role === 'guru' && (
         <>
           {activeTab === 'dashboard' && (
@@ -141,13 +135,11 @@ export default function App() {
               onUpdateJournal={updateJournal}
             />
           )}
-          {activeTab === 'students' && (
-            <Students
+          {activeTab === 'rekapkehadiran' && (
+            <RekapKehadiran
+              journals={guruJournals}
               students={students}
-              onAdd={addStudent}
-              onAddStudents={addStudents}
-              onDelete={deleteStudent}
-              onDeleteClass={deleteClass}
+              teacherName={user.name}
             />
           )}
           {activeTab === 'history' && (
@@ -156,7 +148,7 @@ export default function App() {
         </>
       )}
 
-      {/* Admin Routes */}
+      {/* ── ADMIN ROUTES ── */}
       {user.role === 'admin' && (
         <>
           {activeTab === 'admin-dashboard' && (
@@ -183,6 +175,15 @@ export default function App() {
           )}
           {activeTab === 'monitoring' && (
             <Monitoring journals={journals} students={students} />
+          )}
+          {activeTab === 'students' && (
+            <Students
+              students={students}
+              onAdd={addStudent}
+              onAddStudents={addStudents}
+              onDelete={deleteStudent}
+              onDeleteClass={deleteClass}
+            />
           )}
           {activeTab === 'akun' && (
             <Akun

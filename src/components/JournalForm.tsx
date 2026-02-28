@@ -228,9 +228,9 @@ export function JournalForm({ onSubmit, onCancel, classes, students }: JournalFo
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900 appearance-none disabled:opacity-50">
                 {classes.length > 0
                   ? classes.map(c => <option key={c} value={c}>{c}</option>)
-                  : <option value="">Belum ada kelas</option>}
+                  : <option value="">Belum ada kelas (hubungi Admin)</option>}
               </select>
-              {classes.length === 0 && <p className="mt-1 text-xs text-rose-500">Silakan tambahkan kelas di menu Data Siswa.</p>}
+              {classes.length === 0 && <p className="mt-1 text-xs text-rose-500">Kelas belum tersedia. Hubungi Admin untuk menginput data siswa.</p>}
             </div>
 
             {/* Mata Pelajaran — WAJIB */}
