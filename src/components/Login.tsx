@@ -90,10 +90,7 @@ export function Login({ users, onLogin }: LoginProps) {
             </div>
           </form>
           
-          <div className="mt-6 text-center text-xs text-slate-500">
-            <p>Admin: admin / password</p>
-            <p>Guru: guru1 / password</p>
-          </div>
+          
         </div>
       </div>
     </div>
