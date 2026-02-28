@@ -189,24 +189,6 @@ def build_excel(data: dict) -> bytes:
         c = ws.cell(row=R_TOT, column=ci)
         c.fill=fill(C["indigo"]); c.border=thin()
 
-    # Keterangan
-    R_KET = R_TOT + 2
-    ws.row_dimensions[R_KET].height   = 17
-    ws.row_dimensions[R_KET+1].height = 18
-    merge(ws, R_KET,1,R_KET,LAST)
-    ck = ws.cell(row=R_KET, column=1, value="Keterangan :")
-    ck.font=fnt(True,9); ck.alignment=aln()
-
-    for ki, (lbl, fg, bg) in enumerate([
-        ("H = Hadir",                  C["emerald"], C["emeraldL"]),
-        ("S = Sakit",                  C["amber"],   C["amberL"]),
-        ("I = Izin",                   C["blue"],    C["blueL"]),
-        ("A = Alpa (Tanpa Keterangan)",C["rose"],    C["roseL"]),
-    ], 1):
-        c = ws.cell(row=R_KET+1, column=ki, value=lbl)
-        c.font=fnt(True,8,fg); c.fill=fill(bg)
-        c.alignment=aln('center'); c.border=thin()
-
     # Freeze & print settings
     ws.freeze_panes = ws.cell(row=R_DATA, column=COL_P1)
     ws.page_setup.orientation = 'landscape'
