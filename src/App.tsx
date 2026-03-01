@@ -18,6 +18,7 @@ import { Tugas } from './components/Tugas';
 import { useJournals } from './hooks/useJournals';
 import { useStudents } from './hooks/useStudents';
 import { useUsers } from './hooks/useUsers';
+import { useTugas } from './hooks/useTugas';
 import { User } from './types';
 
 export default function App() {
@@ -30,8 +31,9 @@ export default function App() {
   const { journals, loading: loadingJournals, error: errorJournals, addJournal, updateJournal, deleteJournal } = useJournals();
   const { students, loading: loadingStudents, error: errorStudents, addStudent, addStudents, deleteStudent, deleteClass } = useStudents();
   const { users, loading: loadingUsers, error: errorUsers, addUser, updateUser, deleteUser } = useUsers();
+  const { tugasList, loading: loadingTugas } = useTugas();
 
-  const isLoading = loadingJournals || loadingStudents || loadingUsers;
+  const isLoading = loadingJournals || loadingStudents || loadingUsers || loadingTugas;
   const errors = [errorJournals, errorStudents, errorUsers].filter(Boolean);
 
   useEffect(() => {
@@ -96,6 +98,7 @@ export default function App() {
   }
 
   const guruJournals = journals.filter(j => j.teacherId === user.id);
+  const tugasGuru = tugasList.find(t => t.guruId === user.id);
 
   return (
     <Layout
@@ -127,6 +130,7 @@ export default function App() {
               onCancel={() => setActiveTab('dashboard')}
               classes={classes}
               students={students}
+              tugasGuru={tugasGuru}
             />
           )}
           {activeTab === 'penilaian' && (
