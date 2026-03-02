@@ -122,7 +122,7 @@ export default function App() {
       {user.role === 'guru' && (
         <>
           {activeTab === 'dashboard' && (
-            <Dashboard journals={guruJournals} onNavigate={setActiveTab} tugasGuru={tugasGuru} />
+            <Dashboard journals={guruJournals} onNavigate={setActiveTab} tugasGuru={tugasGuru} students={students} />
           )}
           {activeTab === 'add' && (
             <JournalForm
