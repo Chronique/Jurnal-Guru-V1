@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { JournalEntry } from '../types';
-import { format, parseISO } from 'date-fns';
-import { id } from 'date-fns/locale';
-import { BookOpen, Calendar, Clock, Users, Search, Filter } from 'lucide-react';
 import { Student } from '../hooks/useStudents';
+import {
+  Activity, Search, Filter, ChevronDown, BookOpen,
+  Users, Calendar, Clock, Image as ImageIcon, Eye, X,
+} from 'lucide-react';
 
 type MonitoringProps = {
   journals: JournalEntry[];
@@ -11,197 +12,265 @@ type MonitoringProps = {
 };
 
 export function Monitoring({ journals, students }: MonitoringProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTeacher, setSelectedTeacher] = useState('');
 
-  const teachers = Array.from(new Set(journals.map(j => j.teacherName || 'Guru Tidak Diketahui'))).sort();
+  const [search, setSearch]           = useState('');
+  const [filterGuru, setFilterGuru]   = useState('');
+  const [filterKelas, setFilterKelas] = useState('');
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
-  const filteredJournals = journals.filter(journal => {
-    const matchesSearch = (journal.teacherName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (journal.subject || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (journal.className || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesTeacher = selectedTeacher ? (journal.teacherName || 'Guru Tidak Diketahui') === selectedTeacher : true;
+  // Daftar guru unik dari jurnal
+  const guruList = useMemo(() =>
+    Array.from(new Set(journals.map(j => j.teacherName).filter(Boolean))).sort()
+  , [journals]);
 
-    return matchesSearch && matchesTeacher;
-  });
+  // Daftar kelas unik
+  const kelasList = useMemo(() =>
+    Array.from(new Set(journals.map(j => j.className).filter(Boolean))).sort()
+  , [journals]);
 
-  const getStudentNamesByStatus = (journal: JournalEntry, status: 'sick' | 'permission' | 'absent') => {
-    if (!journal.studentAttendance) return [];
-    
-    return Object.entries(journal.studentAttendance)
-      .filter(([_, studentStatus]) => studentStatus === status)
-      .map(([studentId, _]) => {
-        const student = students.find(s => s.id === studentId);
-        return student ? student.name : 'Siswa Tidak Diketahui';
+  const filtered = useMemo(() => {
+    let result = [...journals];
+    if (filterGuru)  result = result.filter(j => j.teacherName === filterGuru);
+    if (filterKelas) result = result.filter(j => j.className === filterKelas);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(j =>
+        j.teacherName?.toLowerCase().includes(q) ||
+        j.className?.toLowerCase().includes(q) ||
+        j.subject?.toLowerCase().includes(q) ||
+        j.topic?.toLowerCase().includes(q)
+      );
+    }
+    // Urutkan: terbaru dulu (berdasarkan waktu input = createdAt)
+    return result.sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [journals, filterGuru, filterKelas, search]);
+
+  // Format tanggal jurnal (date field = tanggal mengajar)
+  const formatTanggal = (dateStr: string) => {
+    try {
+      return new Date(dateStr + 'T00:00:00').toLocaleDateString('id-ID', {
+        weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
       });
+    } catch { return dateStr; }
   };
 
-  const getAbsentNames = (journal: JournalEntry) => {
-    if (journal.studentAttendance) {
-      return getStudentNamesByStatus(journal, 'absent');
-    }
-    return journal.absentStudentNames ? journal.absentStudentNames.split(',').map(s => s.trim()).filter(Boolean) : [];
+  // Format waktu input (createdAt = kapan guru klik simpan)
+  const formatWaktuInput = (isoStr: string) => {
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      }) + ' ' + d.toLocaleTimeString('id-ID', {
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch { return isoStr; }
+  };
+
+  // Relative time (berapa lama yang lalu)
+  const relativeTime = (isoStr: string) => {
+    try {
+      const diffMs = Date.now() - new Date(isoStr).getTime();
+      const diffMin = Math.floor(diffMs / 60000);
+      if (diffMin < 1)   return 'Baru saja';
+      if (diffMin < 60)  return `${diffMin} menit lalu`;
+      const diffH = Math.floor(diffMin / 60);
+      if (diffH < 24)    return `${diffH} jam lalu`;
+      const diffD = Math.floor(diffH / 24);
+      if (diffD < 30)    return `${diffD} hari lalu`;
+      return formatWaktuInput(isoStr);
+    } catch { return ''; }
+  };
+
+  const getAttTotal = (j: JournalEntry) => {
+    const att = (j.attendance ?? {}) as Record<string, number>;
+    return Object.values(att).reduce((a, v) => a + v, 0);
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col space-y-1">
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Monitoring Jurnal</h2>
-        <p className="text-slate-500">Pantau jurnal pembelajaran yang diinput oleh semua guru.</p>
+
+      {/* Header */}
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <Activity className="w-6 h-6 text-indigo-500" />
+          Monitoring Jurnal
+        </h2>
+        <p className="text-slate-500 text-sm mt-0.5">
+          {journals.length} jurnal dari {guruList.length} guru
+        </p>
       </div>
 
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-5 w-5 text-slate-400" />
+      {/* Stat ringkasan */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          { label: 'Total Jurnal',   value: journals.length,   color: 'text-indigo-600',  bg: 'bg-indigo-50',  border: 'border-indigo-100' },
+          { label: 'Total Guru',     value: guruList.length,   color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+          { label: 'Total Kelas',    value: kelasList.length,  color: 'text-amber-600',   bg: 'bg-amber-50',   border: 'border-amber-100' },
+          { label: 'Total Siswa',    value: students.length,   color: 'text-blue-600',    bg: 'bg-blue-50',    border: 'border-blue-100' },
+        ].map(s => (
+          <div key={s.label} className={`${s.bg} border ${s.border} rounded-2xl p-4`}>
+            <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
+            <p className="text-xs font-medium text-slate-500 mt-0.5">{s.label}</p>
           </div>
-          <input
-            type="text"
-            placeholder="Cari berdasarkan mata pelajaran atau kelas..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-          />
+        ))}
+      </div>
+
+      {/* Filter & Search */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-600">
+          <Filter className="w-4 h-4 text-slate-400" />
+          Filter
         </div>
-        <div className="relative sm:w-64">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Filter className="h-5 w-5 text-slate-400" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="text" placeholder="Cari guru, kelas, mapel..."
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50"
+            />
           </div>
-          <select
-            value={selectedTeacher}
-            onChange={(e) => setSelectedTeacher(e.target.value)}
-            className="block w-full pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors appearance-none bg-white"
-          >
-            <option value="">Semua Guru</option>
-            {teachers.map(teacher => (
-              <option key={teacher} value={teacher}>{teacher}</option>
-            ))}
-          </select>
+          {/* Filter guru */}
+          <div className="relative">
+            <select value={filterGuru} onChange={e => setFilterGuru(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50 appearance-none">
+              <option value="">Semua Guru</option>
+              {guruList.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+          {/* Filter kelas */}
+          <div className="relative">
+            <select value={filterKelas} onChange={e => setFilterKelas(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50 appearance-none">
+              <option value="">Semua Kelas</option>
+              {kelasList.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
         </div>
+        {(filterGuru || filterKelas || search) && (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span>{filtered.length} hasil</span>
+            <button onClick={() => { setFilterGuru(''); setFilterKelas(''); setSearch(''); }}
+              className="flex items-center gap-1 text-rose-500 hover:text-rose-600 font-medium">
+              <X className="w-3 h-3" /> Reset filter
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="divide-y divide-slate-100">
-          {filteredJournals.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center justify-center">
-              <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
-                <BookOpen className="w-8 h-8 text-slate-400" />
-              </div>
-              <p className="text-slate-500 font-medium text-lg">Tidak ada jurnal ditemukan.</p>
-            </div>
-          ) : (
-            filteredJournals.map((journal) => {
-              const sickStudents = getStudentNamesByStatus(journal, 'sick');
-              const permissionStudents = getStudentNamesByStatus(journal, 'permission');
-              const absentStudents = getAbsentNames(journal);
-              const hasAbsences = sickStudents.length > 0 || permissionStudents.length > 0 || absentStudents.length > 0;
-
-              return (
-                <div key={journal.id} className="p-6 hover:bg-slate-50 transition-colors">
-                  <div className="flex flex-col md:flex-row gap-6">
-                    {/* Date Badge */}
-                    <div className="flex-shrink-0 flex flex-col items-center justify-center w-20 h-20 bg-indigo-50 rounded-2xl border border-indigo-100">
-                      <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
-                        {format(parseISO(journal.date), 'MMM', { locale: id })}
-                      </span>
-                      <span className="text-2xl font-black text-indigo-700 leading-none mt-1">
-                        {format(parseISO(journal.date), 'dd')}
-                      </span>
-                      <span className="text-[10px] font-semibold text-indigo-500 mt-1">
-                        {format(parseISO(journal.date), 'yyyy')}
-                      </span>
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                        <div>
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700">
-                              {journal.className}
-                            </span>
-                            <span className="text-sm font-bold text-slate-900">{journal.subject}</span>
-                          </div>
-                          <h4 className="text-lg font-bold text-slate-900 mt-1">{journal.teacherName || 'Guru Tidak Diketahui'}</h4>
-                          <p className="text-sm text-slate-600 mt-1 flex items-center">
-                            <Clock className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                            Jam ke {journal.startTime} s/d {journal.endTime}
-                          </p>
-                        </div>
-                        
-                        <div className="flex-shrink-0">
-                          <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                            <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">Kehadiran</h5>
-                            <div className="flex space-x-3 text-center">
-                              <div>
-                                <span className="block text-[10px] text-emerald-600 font-bold">H</span>
-                                <span className="block text-sm font-black text-emerald-700">{journal.attendance.present}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[10px] text-amber-600 font-bold">S</span>
-                                <span className="block text-sm font-black text-amber-700">{journal.attendance.sick}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[10px] text-blue-600 font-bold">I</span>
-                                <span className="block text-sm font-black text-blue-700">{journal.attendance.permission}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[10px] text-rose-600 font-bold">A</span>
-                                <span className="block text-sm font-black text-rose-700">{journal.attendance.absent}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 bg-white p-4 rounded-xl border border-slate-200">
-                        <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Topik Pembelajaran</h5>
-                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{journal.topic}</p>
-                      </div>
-
-                      {hasAbsences && (
-                        <div className="mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                          <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Detail Ketidakhadiran</h5>
-                          <div className="space-y-2">
-                            {sickStudents.length > 0 && (
-                              <div className="flex items-start">
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold mr-2 flex-shrink-0">S</span>
-                                <span className="text-sm text-slate-700">{sickStudents.join(', ')}</span>
-                              </div>
-                            )}
-                            {permissionStudents.length > 0 && (
-                              <div className="flex items-start">
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-blue-100 text-blue-700 text-[10px] font-bold mr-2 flex-shrink-0">I</span>
-                                <span className="text-sm text-slate-700">{permissionStudents.join(', ')}</span>
-                              </div>
-                            )}
-                            {absentStudents.length > 0 && (
-                              <div className="flex items-start">
-                                <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold mr-2 flex-shrink-0">A</span>
-                                <span className="text-sm text-slate-700">{absentStudents.join(', ')}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {journal.photoUrl && (
-                        <div className="mt-4">
-                          <h5 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Foto Pembelajaran</h5>
-                          <div className="rounded-xl overflow-hidden border border-slate-200">
-                            <img src={journal.photoUrl} alt="Foto Pembelajaran" className="w-full h-auto max-h-96 object-cover" />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
+      {/* Tabel jurnal */}
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center">
+          <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">Belum ada jurnal.</p>
         </div>
-      </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Guru</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="flex items-center gap-1"><Calendar className="w-3 h-3" />Tgl Mengajar</div>
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Kelas · Mapel</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Topik</th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="flex items-center justify-center gap-1"><Users className="w-3 h-3" />Hadir</div>
+                  </th>
+                  {/* Kolom waktu input — BARU */}
+                  <th className="px-4 py-3 text-left text-xs font-bold text-indigo-600 uppercase tracking-wider whitespace-nowrap">
+                    <div className="flex items-center gap-1"><Clock className="w-3 h-3" />Waktu Input</div>
+                  </th>
+                  <th className="px-4 py-3 text-center text-xs font-bold text-slate-500 uppercase tracking-wider">Foto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map(j => {
+                  const attTotal = getAttTotal(j);
+                  const hadir = (j.attendance as Record<string, number>)?.['present'] ?? 0;
+                  return (
+                    <tr key={j.id} className="hover:bg-slate-50/50 transition-colors">
+                      {/* Guru */}
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-slate-900 text-sm">{j.teacherName ?? '-'}</p>
+                      </td>
+                      {/* Tgl mengajar */}
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-600 text-xs">
+                        {formatTanggal(j.date)}
+                        <div className="text-[10px] text-slate-400">Jam ke-{j.startTime}–{j.endTime}</div>
+                      </td>
+                      {/* Kelas · Mapel */}
+                      <td className="px-4 py-3">
+                        <span className="inline-block bg-indigo-50 text-indigo-700 text-xs font-bold px-2 py-0.5 rounded-full mb-0.5">{j.className}</span>
+                        <p className="text-xs text-slate-600">{j.subject}</p>
+                      </td>
+                      {/* Topik */}
+                      <td className="px-4 py-3 max-w-[180px]">
+                        <p className="text-xs text-slate-700 line-clamp-2">{j.topic || '-'}</p>
+                      </td>
+                      {/* Hadir */}
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-sm font-bold ${hadir > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                          {hadir}
+                        </span>
+                        {attTotal > 0 && (
+                          <span className="text-xs text-slate-400">/{attTotal}</span>
+                        )}
+                      </td>
+                      {/* Waktu Input — tampilkan createdAt */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <p className="text-xs font-semibold text-slate-700">{formatWaktuInput(j.createdAt)}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">{relativeTime(j.createdAt)}</p>
+                      </td>
+                      {/* Foto */}
+                      <td className="px-4 py-3 text-center">
+                        {j.photoUrl ? (
+                          <button
+                            onClick={() => setPreviewPhoto(j.photoUrl!)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-lg hover:bg-indigo-100 transition-colors"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Lihat
+                          </button>
+                        ) : (
+                          <span className="text-slate-300 text-xs flex items-center justify-center gap-1">
+                            <ImageIcon className="w-3 h-3" />–
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal preview foto */}
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setPreviewPhoto(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-lg text-slate-600 hover:text-rose-500 transition-colors z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img src={previewPhoto} alt="Foto Pembelajaran" className="w-full rounded-2xl shadow-xl object-contain max-h-[80vh]" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -68,7 +68,7 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
   const getMapelForKelas = (namaKelas: string): string[] => {
     if (!tugasGuru) return [];
     const kelasItem = (tugasGuru.kelas ?? []).find(k => k.namaKelas === namaKelas);
-    return (kelasItem?.mapel ?? []).map(m => m.namaMapel).filter(Boolean);
+    return Array.from(new Set((kelasItem?.mapel ?? []).map(m => m.namaMapel).filter(Boolean)));
   };
 
   const hasTugas = tugasGuru && (tugasGuru.kelas ?? []).length > 0;
@@ -227,8 +227,21 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">Tanggal</label>
-              <input type="date" name="date" required value={formData.date} onChange={handleChange}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900" />
+              <input
+                type="date"
+                name="date"
+                required
+                value={formData.date}
+                max={getLocalDateString()}
+                onChange={e => {
+                  // Tidak boleh pilih tanggal masa depan
+                  if (e.target.value <= getLocalDateString()) {
+                    handleChange(e);
+                  }
+                }}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-slate-900"
+              />
+              <p className="mt-1 text-[11px] text-slate-400">Hanya dapat memilih hari ini atau sebelumnya.</p>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Jam Mengajar (Ke-)</label>
