@@ -40,14 +40,22 @@ const totalMapelGuru = (kelas: KelasItem[] | undefined) => {
 
 // Hitung pertemuan unik per kelas: mapel yang sama (nama sama) dianggap 1 pertemuan.
 // Juga: jika ada lebih dari 1 mapel dalam seminggu, tetap dihitung 1 pertemuan per kelas.
+// Hitung total pertemuan/minggu:
+// Tiap entri mapel yang unik namanya (per kelas) dihitung sesuai pertemuanPerMinggu-nya.
+// Mapel dengan nama sama dalam satu kelas → ambil pertemuanPerMinggu terbesar (deduplikasi).
 const totalPertemuanUnik = (kelas: KelasItem[] | undefined) =>
-  (kelas ?? []).reduce((a, k) => {
-    // Ambil nama mapel unik per kelas → tiap kelas = 1 pertemuan (1 sesi belajar)
-    const namaUnik = new Set((k.mapel ?? []).map(m => m.namaMapel));
-    // Pertemuan per kelas = max pertemuanPerMinggu dari semua mapel di kelas itu
-    const maxPPM = (k.mapel ?? []).reduce((mx, m) => Math.max(mx, m.pertemuanPerMinggu ?? 1), 0);
-    // Jika ada mapel berbeda, tiap mapel unik tetap 1 slot, tapi kelas dianggap 1 unit pertemuan
-    return a + (namaUnik.size > 0 ? maxPPM : 0);
+  (kelas ?? []).reduce((total, k) => {
+    // Deduplikasi mapel per kelas: nama sama → ambil pertemuanPerMinggu terbesar
+    const byNama: Record<string, number> = {};
+    (k.mapel ?? []).forEach(m => {
+      const ppm = m.pertemuanPerMinggu ?? 1;
+      if (!byNama[m.namaMapel] || ppm > byNama[m.namaMapel]) {
+        byNama[m.namaMapel] = ppm;
+      }
+    });
+    // Jumlahkan pertemuanPerMinggu dari setiap mapel unik di kelas ini
+    const sumKelas = Object.values(byNama).reduce((s, v) => s + v, 0);
+    return total + sumKelas;
   }, 0);
 
 // ── Komponen baris mapel dalam satu kelas ─────────────────────────────────────

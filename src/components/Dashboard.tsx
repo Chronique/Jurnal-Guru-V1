@@ -2,14 +2,16 @@ import { useMemo } from 'react';
 import { JournalEntry } from '../types';
 import { BookOpen, Users, Calendar, Clock, PlusCircle, TrendingUp } from 'lucide-react';
 import { TugasGuru } from '../hooks/useTugas';
+import { Student } from '../hooks/useStudents';
 
 type DashboardProps = {
   journals: JournalEntry[];
   onNavigate: (tab: string) => void;
   tugasGuru?: TugasGuru;
+  students?: Student[];
 };
 
-export function Dashboard({ journals, onNavigate, tugasGuru }: DashboardProps) {
+export function Dashboard({ journals, onNavigate, tugasGuru, students = [] }: DashboardProps) {
 
   const totalJamTarget = useMemo(() => {
     if (!tugasGuru) return 0;
@@ -20,9 +22,15 @@ export function Dashboard({ journals, onNavigate, tugasGuru }: DashboardProps) {
 
   const totalPertemuanTarget = useMemo(() => {
     if (!tugasGuru) return 0;
-    return (tugasGuru.kelas ?? []).reduce(
-      (a, k) => a + k.mapel.reduce((b, m) => b + (m.pertemuanPerMinggu ?? 1), 0), 0
-    );
+    return (tugasGuru.kelas ?? []).reduce((total, k) => {
+      // Deduplikasi: mapel nama sama dalam satu kelas → pakai pertemuanPerMinggu terbesar
+      const byNama: Record<string, number> = {};
+      (k.mapel ?? []).forEach(m => {
+        const ppm = m.pertemuanPerMinggu ?? 1;
+        if (!byNama[m.namaMapel] || ppm > byNama[m.namaMapel]) byNama[m.namaMapel] = ppm;
+      });
+      return total + Object.values(byNama).reduce((s, v) => s + v, 0);
+    }, 0);
   }, [tugasGuru]);
 
   const totalJurnal = journals.length;
@@ -30,14 +38,19 @@ export function Dashboard({ journals, onNavigate, tugasGuru }: DashboardProps) {
   const hariMengajar = useMemo(() => new Set(journals.map(j => j.date)).size, [journals]);
 
   const { totalHadir, totalSiswa } = useMemo(() => {
-    let hadir = 0, semua = 0;
+    // totalHadir = akumulasi siswa hadir dari semua jurnal
+    let hadir = 0;
     journals.forEach(j => {
       const att = (j.attendance ?? {}) as Record<string, number>;
       hadir += att['present'] ?? 0;
-      semua += Object.values(att).reduce((a: number, v: number) => a + v, 0);
     });
-    return { totalHadir: hadir, totalSiswa: semua };
-  }, [journals]);
+    // totalSiswa = jumlah siswa terdaftar di kelas yang diampu guru
+    const kelasGuru = new Set((tugasGuru?.kelas ?? []).map(k => k.namaKelas));
+    const siswaTarget = kelasGuru.size > 0
+      ? students.filter(s => kelasGuru.has(s.className)).length
+      : 0;
+    return { totalHadir: hadir, totalSiswa: siswaTarget };
+  }, [journals, students, tugasGuru]);
 
   const totalJamDiinput = useMemo(() => {
     return journals.reduce((acc, j) => {
@@ -158,14 +171,6 @@ export function Dashboard({ journals, onNavigate, tugasGuru }: DashboardProps) {
           );
         })}
       </div>
-
-      <button
-        onClick={() => onNavigate('add')}
-        className="w-full flex items-center justify-center gap-2 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-2xl shadow-sm transition-colors"
-      >
-        <PlusCircle className="w-5 h-5" />
-        Isi Jurnal Baru
-      </button>
 
       {recentJournals.length > 0 && (
         <div className="space-y-3">
