@@ -227,13 +227,33 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             if (tab.id === 'add') {
               return (
                 <div key={tab.id} className="relative w-full h-full flex justify-center">
-                  <button onClick={() => onTabChange(tab.id)}
+                  {/* Lingkaran pulse saat aktif */}
+                  {isActive && (
+                    <>
+                      <span className="absolute -top-6 w-16 h-16 rounded-full bg-indigo-400 opacity-30 animate-ping z-0" />
+                      <span className="absolute -top-6 w-16 h-16 rounded-full bg-indigo-500 opacity-20 animate-pulse z-0" />
+                    </>
+                  )}
+                  <button
+                    onClick={() => onTabChange(tab.id)}
                     className={cn(
-                      "absolute -top-6 flex items-center justify-center w-16 h-16 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95 border-4 border-slate-50 dark:border-slate-900",
-                      isActive ? "bg-indigo-700 text-white" : "bg-slate-900 dark:bg-slate-700 text-white"
-                    )}>
-                    <Icon className="w-8 h-8" />
+                      "absolute -top-8 flex items-center justify-center w-16 h-16 rounded-full shadow-xl transition-all duration-300 border-4 border-slate-50 dark:border-slate-900 z-10",
+                      isActive
+                        ? "bg-indigo-600 text-white scale-110 shadow-indigo-300 dark:shadow-indigo-900"
+                        : "bg-slate-900 dark:bg-slate-700 text-white hover:scale-105 active:scale-95"
+                    )}
+                  >
+                    <Icon className={cn(
+                      "w-7 h-7 transition-transform duration-500",
+                      isActive ? "rotate-45" : "rotate-0"
+                    )} />
                   </button>
+                  <span className={cn(
+                    "absolute bottom-1 text-[9px] font-bold transition-colors duration-200",
+                    isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"
+                  )}>
+                    {tab.label}
+                  </span>
                 </div>
               );
             }
