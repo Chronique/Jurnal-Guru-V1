@@ -1,36 +1,40 @@
 import React, { useState } from 'react';
 import { User, Role } from '../types';
-import { Shield, Plus, Edit2, Trash2, X, Save } from 'lucide-react';
+import { Shield, Plus, Edit2, Trash2, X, Save, GraduationCap } from 'lucide-react';
 
 type AkunProps = {
   users: User[];
+  classes: string[]; // daftar kelas dari data siswa
   onAdd: (user: Omit<User, 'id'>) => void;
   onUpdate: (id: string, user: Partial<User>) => void;
   onDelete: (id: string) => void;
 };
 
-export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
+type FormData = Omit<User, 'id'>;
+
+export function Akun({ users, classes, onAdd, onUpdate, onDelete }: AkunProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Omit<User, 'id'>>({
-    username: '',
-    password: '',
-    name: '',
-    role: 'guru',
+  const [formData, setFormData] = useState<FormData>({
+    username: '', password: '', name: '', role: 'guru', waliKelas: '',
   });
 
   const resetForm = () => {
-    setFormData({ username: '', password: '', name: '', role: 'guru' });
+    setFormData({ username: '', password: '', name: '', role: 'guru', waliKelas: '' });
     setIsAdding(false);
     setEditingId(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload: FormData = {
+      ...formData,
+      waliKelas: formData.role === 'guru' ? (formData.waliKelas || undefined) : undefined,
+    };
     if (editingId) {
-      onUpdate(editingId, formData);
+      onUpdate(editingId, payload);
     } else {
-      onAdd(formData);
+      onAdd(payload);
     }
     resetForm();
   };
@@ -41,6 +45,7 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
       password: user.password || '',
       name: user.name,
       role: user.role,
+      waliKelas: user.waliKelas || '',
     });
     setEditingId(user.id);
     setIsAdding(true);
@@ -51,7 +56,7 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col space-y-1">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Manajemen Akun</h2>
-          <p className="text-slate-500">Kelola akun admin dan guru.</p>
+          <p className="text-slate-500">Kelola akun admin dan guru. Guru bisa ditunjuk sebagai wali kelas.</p>
         </div>
         {!isAdding && (
           <button
@@ -79,10 +84,8 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
                 <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  type="text" required value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -90,7 +93,7 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
                 <label className="block text-sm font-medium text-slate-700 mb-1">Peran (Role)</label>
                 <select
                   value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as Role })}
+                  onChange={e => setFormData({ ...formData, role: e.target.value as Role, waliKelas: '' })}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 >
                   <option value="guru">Guru</option>
@@ -100,23 +103,42 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
                 <input
-                  type="text"
-                  required
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  type="text" required value={formData.username}
+                  onChange={e => setFormData({ ...formData, username: e.target.value })}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                 <input
-                  type="text"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  type="text" required value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
+
+              {/* Wali Kelas — hanya tampil jika role guru */}
+              {formData.role === 'guru' && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1.5">
+                    <GraduationCap className="w-4 h-4 text-indigo-500" />
+                    Wali Kelas <span className="text-slate-400 font-normal text-xs">(opsional)</span>
+                  </label>
+                  <select
+                    value={formData.waliKelas ?? ''}
+                    onChange={e => setFormData({ ...formData, waliKelas: e.target.value })}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="">— Bukan Wali Kelas —</option>
+                    {classes.map(k => (
+                      <option key={k} value={k}>Kelas {k}</option>
+                    ))}
+                  </select>
+                  {classes.length === 0 && (
+                    <p className="mt-1 text-xs text-slate-400">Belum ada data kelas. Tambahkan siswa di menu Data Siswa.</p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex justify-end pt-2">
               <button
@@ -140,11 +162,12 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Username</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Password</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Wali Kelas</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {users.map((user) => (
+              {users.map(user => (
                 <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center">
@@ -163,6 +186,16 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
                       {user.role}
                     </span>
                   </td>
+                  <td className="px-6 py-4">
+                    {user.waliKelas ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                        <GraduationCap className="w-3 h-3" />
+                        {user.waliKelas}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-300">—</span>
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-right space-x-2">
                     <button
                       onClick={() => handleEdit(user)}
@@ -172,9 +205,7 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
                     </button>
                     <button
                       onClick={() => {
-                        if (window.confirm('Apakah Anda yakin ingin menghapus akun ini?')) {
-                          onDelete(user.id);
-                        }
+                        if (window.confirm('Apakah Anda yakin ingin menghapus akun ini?')) onDelete(user.id);
                       }}
                       className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                     >
@@ -185,7 +216,7 @@ export function Akun({ users, onAdd, onUpdate, onDelete }: AkunProps) {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                     Belum ada data akun.
                   </td>
                 </tr>

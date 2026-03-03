@@ -1,5 +1,5 @@
 import { ReactNode, useState, useEffect, FormEvent } from 'react';
-import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield,Phone, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save, ClipboardList, ClipboardCheck } from 'lucide-react';
+import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield, Phone, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save, ClipboardList, ClipboardCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
 
@@ -26,17 +26,11 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
   });
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    setIsMenuOpen(false);
-  };
+  const toggleDarkMode = () => { setIsDarkMode(!isDarkMode); setIsMenuOpen(false); };
 
   const handlePasswordSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -48,22 +42,24 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
     }
   };
 
-  // Guru tabs — ditambah Rekap Kehadiran
+  // Guru tabs — tampilkan Wali Murid hanya jika guru punya waliKelas
   const guruTabs = [
-    { id: 'dashboard',        label: 'Beranda',         icon: Home },
-    { id: 'history',          label: 'Riwayat',         icon: BookOpen },
-    { id: 'add',              label: 'Isi Jurnal',      icon: PlusCircle },
-    { id: 'penilaian',        label: 'Penilaian',       icon: Star },
-    { id: 'rekap-kehadiran',  label: 'Rekap Hadir',     icon: ClipboardList },
+    { id: 'dashboard',       label: 'Beranda',     icon: Home },
+    { id: 'history',         label: 'Riwayat',     icon: BookOpen },
+    { id: 'add',             label: 'Isi Jurnal',  icon: PlusCircle },
+    { id: 'penilaian',       label: 'Penilaian',   icon: Star },
+    { id: 'rekap-kehadiran', label: 'Rekap Hadir', icon: ClipboardList },
+    ...(user.waliKelas
+      ? [{ id: 'wali-murid', label: 'Wali Murid', icon: Phone }]
+      : []),
   ];
 
-  // Admin tabs
+  // Admin tabs — tanpa wali-murid
   const adminTabs = [
     { id: 'admin-dashboard', label: 'Beranda',    icon: Home },
     { id: 'monitoring',      label: 'Monitoring', icon: Activity },
     { id: 'students',        label: 'Data Siswa', icon: Users },
     { id: 'tugas',           label: 'Tugas',      icon: ClipboardCheck },
-    { id: 'wali-murid',      label: 'Wali Murid',   icon: Phone },
     { id: 'akun',            label: 'Akun',       icon: Shield },
   ];
 
@@ -74,7 +70,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       src={SCHOOL_ICON}
       alt="Logo"
       className={className}
-      onError={(e) => {
+      onError={e => {
         const t = e.currentTarget;
         t.style.display = 'none';
         const next = t.nextElementSibling as HTMLElement;
@@ -98,7 +94,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
           </div>
         </div>
         <nav className="flex-1 px-4 space-y-1.5 mt-4">
-          {tabs.map((tab) => {
+          {tabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -115,6 +111,15 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             );
           })}
         </nav>
+
+        {/* Badge wali kelas di sidebar */}
+        {user.role === 'guru' && user.waliKelas && (
+          <div className="mx-4 mb-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-500/10 rounded-xl border border-emerald-100 dark:border-emerald-500/20">
+            <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Wali Kelas</p>
+            <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{user.waliKelas}</p>
+          </div>
+        )}
+
         <div className="p-4 border-t border-slate-200 dark:border-slate-700 relative">
           {isMenuOpen && (
             <div className="absolute bottom-full left-4 right-4 mb-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
@@ -143,7 +148,9 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
               </div>
               <div className="text-left">
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-200 line-clamp-1">{user.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{user.role}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">
+                  {user.role}{user.waliKelas ? ` · Wali Kelas ${user.waliKelas}` : ''}
+                </p>
               </div>
             </div>
             {isMenuOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronUp className="w-4 h-4 text-slate-400" />}
@@ -173,14 +180,15 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             </button>
             {isMenuOpen && (
               <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
-                {/* Nama akun */}
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
                   <div className="w-9 h-9 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm uppercase flex-shrink-0">
                     {user.name.charAt(0)}
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user.name}</p>
-                    <p className="text-[10px] text-slate-400 capitalize">{user.role}</p>
+                    <p className="text-[10px] text-slate-400 capitalize">
+                      {user.role}{user.waliKelas ? ` · Wali ${user.waliKelas}` : ''}
+                    </p>
                   </div>
                 </div>
                 <div className="p-2 space-y-1">
@@ -213,7 +221,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       {/* Bottom nav mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 pb-safe z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] transition-colors duration-200">
         <div className="flex justify-around items-center h-16 relative">
-          {tabs.map((tab) => {
+          {tabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             if (tab.id === 'add') {
@@ -259,7 +267,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             <form onSubmit={handlePasswordSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password Baru</label>
-                <input type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                <input type="password" required value={newPassword} onChange={e => setNewPassword(e.target.value)}
                   className="w-full px-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 dark:text-white"
                   placeholder="Masukkan password baru" />
               </div>
