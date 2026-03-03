@@ -1,5 +1,5 @@
 import { ReactNode, useState, useEffect, FormEvent } from 'react';
-import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save, ClipboardList, ClipboardCheck } from 'lucide-react';
+import { Home, PlusCircle, BookOpen, Users, Star, LogOut, Shield,Phone, Activity, KeyRound, Moon, Sun, ChevronUp, ChevronDown, X, Save, ClipboardList, ClipboardCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { User } from '../types';
 
@@ -63,6 +63,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
     { id: 'monitoring',      label: 'Monitoring', icon: Activity },
     { id: 'students',        label: 'Data Siswa', icon: Users },
     { id: 'tugas',           label: 'Tugas',      icon: ClipboardCheck },
+    { id: 'wali-murid',      label: 'Wali Murid',   icon: Phone },
     { id: 'akun',            label: 'Akun',       icon: Shield },
   ];
 

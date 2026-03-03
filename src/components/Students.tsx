@@ -22,15 +22,12 @@ export function Students({
 
   const [expandedClass, setExpandedClass] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-
   const [addForm, setAddForm] = useState<EditForm>({ name: '', nis: '', className: '' });
   const [addError, setAddError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm>({ name: '', nis: '', className: '' });
   const [editError, setEditError] = useState('');
-
   const [importResult, setImportResult] = useState<string | null>(null);
 
   const grouped = useMemo(() => {
@@ -79,34 +76,50 @@ export function Students({
     setEditError('');
   };
 
+  // ── CSV parser — support UTF-8, UTF-8 BOM, dan Windows-1252 ───────────────
+  const parseCSV = (text: string) => {
+    // Buang BOM jika ada
+    const clean = text.replace(/^\uFEFF/, '');
+    const lines = clean.split('\n').map(l => l.trim()).filter(Boolean);
+    const imported: Omit<Student, 'id'>[] = [];
+    let skipped = 0;
+    const startIdx = isNaN(Number(lines[0]?.split(',')[0]?.trim())) ? 1 : 0;
+    for (let i = startIdx; i < lines.length; i++) {
+      const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+      let nis = '', name = '', className = '';
+      if (cols.length >= 4)       { [, nis, name, className] = cols; }
+      else if (cols.length === 3) { [nis, name, className] = cols; }
+      else { skipped++; continue; }
+      if (name && nis && className) { imported.push({ name, nis, className }); }
+      else { skipped++; }
+    }
+    if (imported.length > 0) {
+      onAddStudents(imported);
+      setImportResult(`✓ ${imported.length} siswa berhasil diimport${skipped > 0 ? `, ${skipped} baris dilewati` : ''}.`);
+    } else {
+      setImportResult('⚠ Tidak ada data valid. Format: NIS, Nama, Kelas.');
+    }
+    setTimeout(() => setImportResult(null), 5000);
+  };
+
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      const imported: Omit<Student, 'id'>[] = [];
-      let skipped = 0;
-      const startIdx = isNaN(Number(lines[0]?.split(',')[0]?.trim())) ? 1 : 0;
-      for (let i = startIdx; i < lines.length; i++) {
-        const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
-        let nis = '', name = '', className = '';
-        if (cols.length >= 4)      { [, nis, name, className] = cols; }
-        else if (cols.length === 3) { [nis, name, className] = cols; }
-        else { skipped++; continue; }
-        if (name && nis && className) { imported.push({ name, nis, className }); }
-        else { skipped++; }
+      // Jika ada karakter pengganti (karakter rusak), coba Windows-1252
+      if (text.includes('\uFFFD')) {
+        const reader2 = new FileReader();
+        reader2.onload = (ev2) => parseCSV(ev2.target?.result as string);
+        reader2.readAsText(file, 'windows-1252');
+        return;
       }
-      if (imported.length > 0) {
-        onAddStudents(imported);
-        setImportResult(`✓ ${imported.length} siswa berhasil diimport${skipped > 0 ? `, ${skipped} baris dilewati` : ''}.`);
-      } else {
-        setImportResult(`⚠ Tidak ada data valid. Format: NIS, Nama, Kelas.`);
-      }
-      setTimeout(() => setImportResult(null), 5000);
+      parseCSV(text);
     };
-    reader.readAsText(file);
+    // Baca dengan UTF-8 dulu (support BOM otomatis lewat parseCSV)
+    reader.readAsText(file, 'UTF-8');
     e.target.value = '';
   };
 
@@ -141,7 +154,11 @@ export function Students({
       </div>
 
       {importResult && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm">
+        <div className={`px-4 py-3 rounded-xl text-sm border ${
+          importResult.startsWith('✓')
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : 'bg-amber-50 border-amber-200 text-amber-700'
+        }`}>
           {importResult}
         </div>
       )}
@@ -255,7 +272,6 @@ export function Students({
                           return (
                             <tr key={student.id} className={`transition-colors ${isEditing ? 'bg-indigo-50/60' : 'hover:bg-slate-50/50'}`}>
                               <td className="px-4 py-2.5 text-slate-400 text-xs">{idx + 1}</td>
-
                               {isEditing ? (
                                 <>
                                   <td className="px-3 py-2">
@@ -302,12 +318,10 @@ export function Students({
                                   <td className="px-4 py-2.5 text-slate-500">{student.className}</td>
                                   <td className="px-4 py-2.5">
                                     <div className="flex items-center justify-center gap-1.5">
-                                      {/* Tombol Edit */}
                                       <button onClick={() => startEdit(student)}
                                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Edit siswa">
                                         <Pencil className="w-3.5 h-3.5" />
                                       </button>
-                                      {/* Tombol Hapus */}
                                       <button
                                         onClick={() => { if (confirm(`Hapus ${student.name}?`)) onDelete(student.id); }}
                                         className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" title="Hapus siswa">
@@ -335,6 +349,7 @@ export function Students({
         <p className="font-semibold text-slate-600">Format Import CSV:</p>
         <p>Kolom: <code className="bg-white px-1 rounded border border-slate-200">NIS, Nama, Kelas</code> atau <code className="bg-white px-1 rounded border border-slate-200">No, NIS, Nama, Kelas</code></p>
         <p>Baris pertama boleh header, akan diabaikan otomatis.</p>
+        <p className="text-slate-400">💡 Dari Excel: simpan sebagai <strong className="text-slate-500">CSV UTF-8 (dengan BOM)</strong> agar terbaca dengan benar.</p>
       </div>
     </div>
   );

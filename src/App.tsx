@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { WaliMurid } from './components/WaliMurid';
 import { useState, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -195,6 +196,12 @@ export default function App() {
           {activeTab === 'tugas' && (
             <Tugas users={users} students={students} />
           )}
+          {activeTab === 'wali-murid' && (
+          <WaliMurid
+            students={students}
+            journals={journals}
+            />
+        )}
           {activeTab === 'akun' && (
             <Akun
               users={users}
