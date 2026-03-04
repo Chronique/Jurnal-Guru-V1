@@ -168,6 +168,7 @@ export default function App() {
               students={students}
               journals={journals}
               lockedKelas={user.waliKelas}
+              isAdmin={false}
             />
           )}
         </>
@@ -213,6 +214,14 @@ export default function App() {
           )}
           {activeTab === 'tugas' && (
             <Tugas users={users} students={students} />
+          )}
+          {/* Wali Murid untuk admin — dengan tab Kedisiplinan */}
+          {activeTab === 'wali-murid' && (
+            <WaliMurid
+              students={students}
+              journals={journals}
+              isAdmin={true}
+            />
           )}
           {activeTab === 'akun' && (
             <Akun

@@ -54,12 +54,13 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       : []),
   ];
 
-  // Admin tabs — tanpa wali-murid
+  // Admin tabs — dengan Wali Murid (termasuk tab Kedisiplinan)
   const adminTabs = [
     { id: 'admin-dashboard', label: 'Beranda',    icon: Home },
     { id: 'monitoring',      label: 'Monitoring', icon: Activity },
     { id: 'students',        label: 'Data Siswa', icon: Users },
     { id: 'tugas',           label: 'Tugas',      icon: ClipboardCheck },
+    { id: 'wali-murid',      label: 'Wali Murid', icon: Phone },
     { id: 'akun',            label: 'Akun',       icon: Shield },
   ];
 
@@ -227,7 +228,6 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             if (tab.id === 'add') {
               return (
                 <div key={tab.id} className="relative w-full h-full flex justify-center">
-                  {/* Lingkaran pulse saat aktif */}
                   {isActive && (
                     <>
                       <span className="absolute -top-6 w-16 h-16 rounded-full bg-indigo-400 opacity-30 animate-ping z-0" />
