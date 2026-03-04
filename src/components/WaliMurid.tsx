@@ -7,21 +7,45 @@ import {
   Phone, Users, BookOpen, Search, Save,
   ChevronDown, Star, CheckCircle2, Send,
   Settings, Eye, EyeOff, Loader2, X, CheckCheck,
+  CalendarDays,
 } from 'lucide-react';
 
 type WaliMuridProps = {
   students: Student[];
   journals: JournalEntry[];
-  lockedKelas?: string; // jika diisi, filter kelas dikunci (mode guru wali kelas)
+  lockedKelas?: string;
 };
 
 type ActiveTab = 'kontak' | 'nilai';
-
+type PeriodeFilter = 'harian' | 'mingguan' | 'semua';
 type SendStatus = 'idle' | 'sending' | 'success' | 'error';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 transition-colors';
 
 const FONNTE_TOKEN_KEY = 'jurnal-guru:fonnte-token';
+
+// ── Helpers periode ────────────────────────────────────────────────────────────
+function getTodayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - daysToMonday);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { start: fmt(monday), end: getTodayStr() };
+}
+
+function getPeriodeLabel(p: PeriodeFilter): string {
+  if (p === 'harian')   return 'Hari Ini';
+  if (p === 'mingguan') return 'Minggu Ini';
+  return 'Semua Waktu';
+}
 
 // ── Fonnte sender ─────────────────────────────────────────────────────────────
 async function sendWhatsApp(token: string, noWa: string, message: string): Promise<{ success: boolean; reason?: string }> {
@@ -53,6 +77,9 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
   const [editMap, setEditMap]             = useState<Record<string, { namaOrtu: string; noWa: string }>>({});
   const [savedIds, setSavedIds]           = useState<Set<string>>(new Set());
 
+  // ── Filter Periode ─────────────────────────────────────────────────────────
+  const [periodeFilter, setPeriodeFilter] = useState<PeriodeFilter>('semua');
+
   // Fonnte
   const [fonnteToken, setFonnteToken]     = useState('');
   const [tokenInput, setTokenInput]       = useState('');
@@ -82,7 +109,6 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
   const kelasList = useMemo(() =>
     Array.from(new Set(students.map(s => s.className))).sort(), [students]);
 
-  // Jika ada lockedKelas (mode guru), paksa pilih kelas itu
   useEffect(() => {
     if (lockedKelas) setSelectedKelas(lockedKelas);
     else if (!selectedKelas && kelasList.length > 0) setSelectedKelas(kelasList[0]);
@@ -95,6 +121,20 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
       .filter(s => !search.trim() || s.name.toLowerCase().includes(search.toLowerCase()) || s.nis.includes(search))
       .sort((a, b) => a.name.localeCompare(b.name, 'id')),
     [students, selectedKelas, search]);
+
+  // ── Jurnal terfilter berdasarkan kelas + periode ───────────────────────────
+  const filteredJournals = useMemo(() => {
+    const base = journals.filter(j => j.className === selectedKelas);
+    if (periodeFilter === 'harian') {
+      const today = getTodayStr();
+      return base.filter(j => j.date === today);
+    }
+    if (periodeFilter === 'mingguan') {
+      const { start, end } = getWeekRange();
+      return base.filter(j => j.date >= start && j.date <= end);
+    }
+    return base; // semua
+  }, [journals, selectedKelas, periodeFilter]);
 
   // ── Kontak handlers ───────────────────────────────────────────────────────
   const getEdit = (studentId: string) => {
@@ -120,25 +160,23 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
 
   // ── Rekap nilai ───────────────────────────────────────────────────────────
   const mapelList = useMemo(() =>
-    Array.from(new Set(
-      journals.filter(j => j.className === selectedKelas).map(j => j.subject)
-    )).sort(),
-    [journals, selectedKelas]);
+    Array.from(new Set(filteredJournals.map(j => j.subject))).sort(),
+    [filteredJournals]);
 
   const getNilai = useCallback((studentId: string, mapel: string): string => {
-    const relevantJournals = journals.filter(j => j.className === selectedKelas && j.subject === mapel);
+    const relevant = filteredJournals.filter(j => j.subject === mapel);
     const values: number[] = [];
-    relevantJournals.forEach(j => {
+    relevant.forEach(j => {
       const grade = (j.grades as Record<string, string>)?.[studentId];
       if (grade !== undefined && grade !== '') values.push(Number(grade));
     });
     if (values.length === 0) return '-';
     return (values.reduce((a, b) => a + b, 0) / values.length).toFixed(1);
-  }, [journals, selectedKelas]);
+  }, [filteredJournals]);
 
   const getAbsensi = useCallback((studentId: string) => {
     let h = 0, s = 0, i = 0, a = 0;
-    journals.filter(j => j.className === selectedKelas).forEach(j => {
+    filteredJournals.forEach(j => {
       const st = j.studentAttendance?.[studentId];
       if (st === 'present') h++;
       else if (st === 'sick') s++;
@@ -148,7 +186,7 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
     const total = h + s + i + a;
     const pct = total ? Math.round((h / total) * 100) : 0;
     return { h, s, i, a, total, pct };
-  }, [journals, selectedKelas]);
+  }, [filteredJournals]);
 
   const getRataRata = useCallback((studentId: string): string => {
     const values: number[] = [];
@@ -164,20 +202,22 @@ export function WaliMurid({ students, journals, lockedKelas }: WaliMuridProps) {
   const buildPesanKehadiran = (student: Student): string => {
     const abs = getAbsensi(student.id);
     const wali = getWali(student.id);
-    const sapaan = wali?.namaOrtu ? `Yth.Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
+    const sapaan = wali?.namaOrtu ? `Yth. Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
+    const periodeLabel = getPeriodeLabel(periodeFilter);
     return (
 `${sapaan}
 
 Berikut rekap kehadiran putra/putri Bapak/Ibu di SMPN 21 Jambi:
 
-👤 Nama  : ${student.name}
-🏫 Kelas : ${selectedKelas}
+👤 Nama    : ${student.name}
+🏫 Kelas   : ${selectedKelas}
+📅 Periode : ${periodeLabel}
 
-✅ Hadir : ${abs.h} kali
-🤒 Sakit : ${abs.s} kali
-📋 Izin  : ${abs.i} kali
-❌ Alpa  : ${abs.a} kali
-📊 % Hadir: ${abs.pct}%
+✅ Hadir   : ${abs.h} kali
+🤒 Sakit   : ${abs.s} kali
+📋 Izin    : ${abs.i} kali
+❌ Alpa    : ${abs.a} kali
+📊 % Hadir : ${abs.pct}%
 
 Terima kasih atas perhatiannya.
 _SMPN 21 Jambi_`
@@ -187,7 +227,8 @@ _SMPN 21 Jambi_`
   // ── Buat pesan nilai ──────────────────────────────────────────────────────
   const buildPesanNilai = (student: Student): string => {
     const wali = getWali(student.id);
-    const sapaan = wali?.namaOrtu ? `Yth.Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
+    const sapaan = wali?.namaOrtu ? `Yth. Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
+    const periodeLabel = getPeriodeLabel(periodeFilter);
     const nilaiLines = mapelList.map(m => {
       const val = getNilai(student.id, m);
       return `📚 ${m.padEnd(10)}: ${val}`;
@@ -198,12 +239,13 @@ _SMPN 21 Jambi_`
 
 Berikut rekap nilai putra/putri Bapak/Ibu di SMPN 21 Jambi:
 
-👤 Nama  : ${student.name}
-🏫 Kelas : ${selectedKelas}
+👤 Nama    : ${student.name}
+🏫 Kelas   : ${selectedKelas}
+📅 Periode : ${periodeLabel}
 
 ${nilaiLines}
 
-⭐ Rata-rata: ${avg}
+⭐ Rata-rata : ${avg}
 
 Terima kasih atas perhatiannya.
 _SMPN 21 Jambi_`
@@ -229,7 +271,7 @@ _SMPN 21 Jambi_`
     if (!fonnteToken) { alert('Token Fonnte belum diatur. Klik ikon ⚙ untuk mengatur token.'); return; }
     const targets = kelasStudents.filter(s => getWali(s.id)?.noWa);
     if (targets.length === 0) { alert('Belum ada siswa yang memiliki No. WA orang tua.'); return; }
-    if (!confirm(`Kirim pesan WhatsApp ke ${targets.length} orang tua siswa kelas ${selectedKelas}?`)) return;
+    if (!confirm(`Kirim pesan WhatsApp (${getPeriodeLabel(periodeFilter)}) ke ${targets.length} orang tua siswa kelas ${selectedKelas}?`)) return;
 
     setBulkStatus('sending');
     setBulkResult(null);
@@ -242,7 +284,6 @@ _SMPN 21 Jambi_`
       const result = await sendWhatsApp(fonnteToken, wali.noWa, pesan);
       if (result.success) { ok++; setSendStatusMap(prev => ({ ...prev, [student.id]: 'success' })); }
       else { fail++; setSendStatusMap(prev => ({ ...prev, [student.id]: 'error' })); }
-      // Delay 1 detik antar pesan agar tidak kena rate limit
       await new Promise(r => setTimeout(r, 1000));
     }
 
@@ -280,7 +321,6 @@ _SMPN 21 Jambi_`
             Kelola kontak orang tua dan pantau rekap nilai siswa per kelas.
           </p>
         </div>
-        {/* Tombol setting Fonnte */}
         <button
           onClick={() => setShowTokenForm(v => !v)}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${
@@ -379,11 +419,10 @@ _SMPN 21 Jambi_`
         })}
       </div>
 
-      {/* Filter kelas + search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      {/* Filter kelas + search + PERIODE */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {lockedKelas ? (
-            // Mode guru: kelas dikunci, tidak bisa ganti
             <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
               <span className="text-sm font-bold text-emerald-700">🏫 Kelas {lockedKelas}</span>
               <span className="text-xs text-emerald-500">(Kelas Anda)</span>
@@ -414,7 +453,40 @@ _SMPN 21 Jambi_`
             />
           </div>
         </div>
-        <p className="text-xs text-slate-400 mt-2">
+
+        {/* ── Pilihan Periode Laporan ────────────────────────────────── */}
+        <div className="flex items-center gap-3 pt-1 border-t border-slate-100">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-500">
+            <CalendarDays className="w-3.5 h-3.5" />
+            Periode Laporan:
+          </div>
+          <div className="flex gap-1.5">
+            {([
+              { id: 'harian',   label: 'Hari Ini' },
+              { id: 'mingguan', label: 'Minggu Ini' },
+              { id: 'semua',    label: 'Semua' },
+            ] as { id: PeriodeFilter; label: string }[]).map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setPeriodeFilter(opt.id)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                  periodeFilter === opt.id
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {periodeFilter !== 'semua' && (
+            <span className="text-xs text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
+              {filteredJournals.length} pertemuan ditemukan
+            </span>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-400">
           {kelasStudents.length} siswa di kelas {selectedKelas}
           {studentsWithWa.length > 0 && ` · ${studentsWithWa.length} sudah ada No. WA`}
         </p>
@@ -432,7 +504,7 @@ _SMPN 21 Jambi_`
             <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2">
               <Phone className="w-4 h-4 text-indigo-500 flex-shrink-0" />
               <p className="text-xs text-indigo-700 font-medium">
-                Input No. WA orang tua. Klik ikon kirim (➤) untuk notifikasi kehadiran ke masing-masing orang tua.
+                Input No. WA orang tua. Klik ikon kirim (➤) untuk notifikasi kehadiran <strong>{getPeriodeLabel(periodeFilter)}</strong> ke masing-masing orang tua.
               </p>
             </div>
             <div className="divide-y divide-slate-100">
@@ -490,7 +562,6 @@ _SMPN 21 Jambi_`
                           />
                         </div>
                       </div>
-                      {/* Simpan */}
                       <button
                         onClick={() => handleSave(student.id)}
                         disabled={!isDirty}
@@ -498,11 +569,10 @@ _SMPN 21 Jambi_`
                       >
                         <Save className="w-3.5 h-3.5" /> Simpan
                       </button>
-                      {/* Kirim WA */}
                       <button
                         onClick={() => handleSendOne(student)}
                         disabled={!hasWa || status === 'sending' || bulkStatus === 'sending'}
-                        title={!hasWa ? 'No. WA belum diisi' : 'Kirim rekap kehadiran via WA'}
+                        title={!hasWa ? 'No. WA belum diisi' : `Kirim rekap kehadiran ${getPeriodeLabel(periodeFilter)} via WA`}
                         className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
                           status === 'success' ? 'bg-emerald-500 text-white' :
                           status === 'error'   ? 'bg-rose-500 text-white' :
@@ -521,7 +591,6 @@ _SMPN 21 Jambi_`
               })}
             </div>
 
-            {/* Footer */}
             <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-slate-500">
                 <span className="font-bold text-emerald-700">{studentsWithWa.length}</span>
@@ -534,7 +603,7 @@ _SMPN 21 Jambi_`
               >
                 {bulkStatus === 'sending'
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</>
-                  : <><Send className="w-3.5 h-3.5" />Kirim WA ke Semua ({studentsWithWa.length})</>}
+                  : <><Send className="w-3.5 h-3.5" />Kirim WA {getPeriodeLabel(periodeFilter)} ke Semua ({studentsWithWa.length})</>}
               </button>
             </div>
           </div>
@@ -551,8 +620,12 @@ _SMPN 21 Jambi_`
         ) : mapelList.length === 0 ? (
           <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-12 text-center">
             <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 font-medium">Belum ada nilai untuk kelas ini.</p>
-            <p className="text-slate-400 text-sm mt-1">Guru perlu input nilai di menu Penilaian terlebih dahulu.</p>
+            <p className="text-slate-500 font-medium">Belum ada nilai untuk periode ini.</p>
+            <p className="text-slate-400 text-sm mt-1">
+              {periodeFilter !== 'semua'
+                ? `Coba ganti periode ke "Semua" atau pastikan ada jurnal di periode ${getPeriodeLabel(periodeFilter)}.`
+                : 'Guru perlu input nilai di menu Penilaian terlebih dahulu.'}
+            </p>
           </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -622,12 +695,11 @@ _SMPN 21 Jambi_`
                             avgNum >= 60 ? 'text-amber-700' : 'text-rose-700'
                           }`}>{avg}</span>
                         </td>
-                        {/* Tombol kirim WA per siswa */}
                         <td className="px-3 py-3 text-center">
                           <button
                             onClick={() => handleSendOne(student)}
                             disabled={!hasWa || status === 'sending' || bulkStatus === 'sending'}
-                            title={!hasWa ? 'No. WA belum diisi di tab Kontak Ortu' : 'Kirim laporan nilai via WA'}
+                            title={!hasWa ? 'No. WA belum diisi di tab Kontak Ortu' : `Kirim laporan nilai ${getPeriodeLabel(periodeFilter)} via WA`}
                             className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                               status === 'success' ? 'bg-emerald-500 text-white' :
                               status === 'error'   ? 'bg-rose-500 text-white' :
@@ -648,10 +720,9 @@ _SMPN 21 Jambi_`
               </table>
             </div>
 
-            {/* Footer */}
             <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-slate-500">
-                {mapelList.length} mata pelajaran · {kelasStudents.length} siswa
+                {mapelList.length} mata pelajaran · {kelasStudents.length} siswa · <span className="font-semibold text-indigo-600">{getPeriodeLabel(periodeFilter)}</span>
               </p>
               <button
                 onClick={handleSendAll}
@@ -660,7 +731,7 @@ _SMPN 21 Jambi_`
               >
                 {bulkStatus === 'sending'
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</>
-                  : <><Send className="w-3.5 h-3.5" />Kirim Laporan Nilai ke Ortu ({studentsWithWa.length})</>}
+                  : <><Send className="w-3.5 h-3.5" />Kirim Laporan {getPeriodeLabel(periodeFilter)} ke Ortu ({studentsWithWa.length})</>}
               </button>
             </div>
           </div>
