@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { JournalEntry, AttendanceStatus } from '../types';
-import { Save, X, Calendar, BookOpen, Users, FileText, Clock as ClockIcon, Camera, Image as ImageIcon, AlertCircle, Info } from 'lucide-react';
+import { Save, X, Calendar, BookOpen, Users, FileText, Clock as ClockIcon, Camera, Image as ImageIcon, AlertCircle, Info, Loader2 } from 'lucide-react';
 import { Student } from '../hooks/useStudents';
 import { TugasGuru } from '../hooks/useTugas';
+import { uploadPhoto } from '../lib/cloudinary';
 
 type JournalFormProps = {
   onSubmit: (entry: Omit<JournalEntry, 'id' | 'createdAt'>) => void;
@@ -94,13 +95,15 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
   });
 
   const [studentAttendance, setStudentAttendance] = useState<Record<string, AttendanceStatus>>({});
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [submitted, setSubmitted] = useState(false);
+  const [photoUrl,   setPhotoUrl]   = useState<string | undefined>(undefined);
+  const [uploading,  setUploading]  = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [errors,     setErrors]     = useState<FormErrors>({});
+  const [submitted,  setSubmitted]  = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const subjectRef = useRef<HTMLSelectElement>(null);
-  const topicRef = useRef<HTMLTextAreaElement>(null);
-  const photoRef = useRef<HTMLDivElement>(null);
+  const subjectRef   = useRef<HTMLSelectElement>(null);
+  const topicRef     = useRef<HTMLTextAreaElement>(null);
+  const photoRef     = useRef<HTMLDivElement>(null);
 
   const classStudents = students.filter(s => s.className === formData.className);
   const mapelOptions  = getMapelForKelas(formData.className);
@@ -133,12 +136,23 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
     }
   };
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Upload foto ke Cloudinary ──────────────────────────────────────────────
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setPhotoUrl(reader.result as string);
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const url = await uploadPhoto(file);
+      setPhotoUrl(url);
+    } catch (err: any) {
+      setUploadError(err.message ?? 'Gagal upload foto. Coba lagi.');
+    } finally {
+      setUploading(false);
+      // Reset input agar bisa pilih file yang sama lagi
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -158,6 +172,11 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
 
     if (!formData.className) {
       alert('Silakan pilih atau buat kelas terlebih dahulu di menu Data Siswa.');
+      return;
+    }
+
+    if (uploading) {
+      alert('Tunggu hingga foto selesai diupload.');
       return;
     }
 
@@ -283,14 +302,13 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
               )}
             </div>
 
-            {/* Mata Pelajaran — selalu dropdown */}
+            {/* Mata Pelajaran */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Mata Pelajaran <span className="text-rose-500">*</span>
               </label>
 
               {hasTugas && mapelOptions.length > 0 ? (
-                // Dari tugas guru (spesifik per kelas)
                 <>
                   <div className="relative">
                     <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -310,7 +328,6 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
                 </>
 
               ) : hasTugas && mapelOptions.length === 0 ? (
-                // Tugas ada tapi kelas ini belum diisi mapel
                 <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
                   <Info className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-amber-700">
@@ -319,7 +336,6 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
                 </div>
 
               ) : (
-                // Tidak ada tugas → pakai DAFTAR_MAPEL standar
                 <>
                   <div className="relative">
                     <BookOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -456,33 +472,80 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
 
         <hr className="border-slate-100" />
 
-        {/* Foto Pembelajaran */}
+        {/* ── Foto Pembelajaran ─────────────────────────────────────────────── */}
         <div className="space-y-3" ref={photoRef}>
           <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center">
             <Camera className="w-4 h-4 mr-2 text-slate-400" />
             Foto Pembelajaran <span className="text-rose-500 ml-1">*</span>
           </h3>
-          <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handlePhotoUpload} />
-          {photoUrl ? (
+
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            ref={fileInputRef}
+            onChange={handlePhotoUpload}
+          />
+
+          {/* State: sedang upload */}
+          {uploading && (
+            <div className="w-full h-32 border-2 border-dashed border-indigo-300 rounded-xl flex flex-col items-center justify-center bg-indigo-50 gap-2">
+              <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+              <span className="text-sm font-medium text-indigo-600">Mengupload foto...</span>
+            </div>
+          )}
+
+          {/* State: foto sudah ada */}
+          {!uploading && photoUrl && (
             <div className="relative rounded-xl overflow-hidden border border-slate-200">
               <img src={photoUrl} alt="Foto Pembelajaran" className="w-full h-48 object-cover" />
-              <button type="button" onClick={() => setPhotoUrl(undefined)}
-                className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-lg text-slate-700 hover:text-rose-600 hover:bg-white transition-colors shadow-sm">
+              <button
+                type="button"
+                onClick={() => { setPhotoUrl(undefined); setUploadError(null); }}
+                className="absolute top-2 right-2 p-1.5 bg-white/80 backdrop-blur-sm rounded-lg text-slate-700 hover:text-rose-600 hover:bg-white transition-colors shadow-sm"
+              >
                 <X className="w-4 h-4" />
               </button>
+              {/* Badge Cloudinary */}
+              <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/50 text-white text-[10px] font-medium rounded-full backdrop-blur-sm">
+                ☁ Cloudinary
+              </span>
             </div>
-          ) : (
-            <button type="button" onClick={() => fileInputRef.current?.click()}
+          )}
+
+          {/* State: belum ada foto */}
+          {!uploading && !photoUrl && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
               className={`w-full h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-colors ${
                 errors.photo
                   ? 'border-rose-400 bg-rose-50 text-rose-500 hover:bg-rose-100'
                   : 'border-slate-300 text-slate-500 hover:bg-slate-50 hover:border-indigo-300 hover:text-indigo-600'
-              }`}>
+              }`}
+            >
               <ImageIcon className={`w-8 h-8 mb-2 ${errors.photo ? 'text-rose-400' : 'text-slate-400'}`} />
               <span className="text-sm font-medium">Klik untuk upload foto kegiatan</span>
+              <span className="text-xs text-slate-400 mt-1">Maks. 5MB · JPG, PNG, WebP</span>
             </button>
           )}
-          {errors.photo && (
+
+          {/* Error upload */}
+          {uploadError && (
+            <p className="text-xs text-rose-500 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" />{uploadError}
+              <button
+                type="button"
+                onClick={() => { setUploadError(null); fileInputRef.current?.click(); }}
+                className="ml-1 underline hover:no-underline"
+              >
+                Coba lagi
+              </button>
+            </p>
+          )}
+
+          {/* Error validasi */}
+          {errors.photo && !uploadError && (
             <p className="text-xs text-rose-500 flex items-center gap-1">
               <AlertCircle className="w-3 h-3" />{errors.photo}
             </p>
@@ -523,10 +586,15 @@ export function JournalForm({ onSubmit, onCancel, classes, students, tugasGuru }
             className="px-6 py-2.5 border border-slate-300 text-slate-700 font-medium rounded-xl hover:bg-slate-50 transition-colors">
             Batal
           </button>
-          <button type="submit" disabled={availableKelas.length === 0}
-            className="px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed">
-            <Save className="w-4 h-4 mr-2" />
-            Simpan Jurnal
+          <button
+            type="submit"
+            disabled={availableKelas.length === 0 || uploading}
+            className="px-6 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {uploading
+              ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengupload...</>
+              : <><Save className="w-4 h-4 mr-2" />Simpan Jurnal</>
+            }
           </button>
         </div>
       </form>
