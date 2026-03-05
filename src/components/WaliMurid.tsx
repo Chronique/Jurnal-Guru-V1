@@ -7,7 +7,7 @@ import {
   Phone, Users, BookOpen, Search, Save,
   ChevronDown, Star, CheckCircle2, Send,
   Settings, Eye, EyeOff, Loader2, X, CheckCheck,
-  CalendarDays,
+  CalendarDays, Clock,
 } from 'lucide-react';
 
 type WaliMuridProps = {
@@ -22,50 +22,73 @@ type PeriodeFilter = 'harian' | 'mingguan' | 'bulanan';
 type SendStatus = 'idle' | 'sending' | 'success' | 'error';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 transition-colors';
-const FONNTE_TOKEN_KEY = 'jurnal-guru:fonnte-token';
-const SENT_LOCK_MS = 15 * 60 * 1000; // 15 menit
+const FONNTE_TOKEN_KEY  = 'jurnal-guru:fonnte-token';
+const SENT_TS_KEY       = 'jurnal-guru:sent-ts';       // per-siswa timestamp
+const BULK_SENT_TS_KEY  = 'jurnal-guru:bulk-sent-ts';  // timestamp kirim-semua terakhir
+const SENT_LOCK_MS      = 15 * 60 * 1000;              // 15 menit
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+function loadSentTs(): Map<string, number> {
+  try {
+    const raw = localStorage.getItem(SENT_TS_KEY);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    return new Map<string, number>(Object.entries(parsed));
+  } catch { return new Map<string, number>(); }
+}
+
+function saveSentTs(map: Map<string, number>) {
+  try { localStorage.setItem(SENT_TS_KEY, JSON.stringify(Object.fromEntries(map))); } catch {}
+}
+
+function loadBulkSentTs(): number | null {
+  try {
+    const raw = localStorage.getItem(BULK_SENT_TS_KEY);
+    return raw ? Number(raw) : null;
+  } catch { return null; }
+}
+
+function saveBulkSentTs(ts: number) {
+  try { localStorage.setItem(BULK_SENT_TS_KEY, String(ts)); } catch {}
+}
 
 // ── Helpers periode ────────────────────────────────────────────────────────────
 function fmt(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-
 function getTodayStr() { return fmt(new Date()); }
 
-/**
- * Minggu ini = Senin s/d Jumat minggu berjalan (penuh).
- * Tidak peduli hari ini apa — selalu Senin–Jumat penuh,
- * sehingga Jumat siang bisa kirim rekap lengkap 1 minggu.
- */
 function getWeekRange() {
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun
+  const dayOfWeek = now.getDay();
   const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - daysToMonday);
-  const friday = new Date(monday);
-  friday.setDate(monday.getDate() + 4);
+  const monday = new Date(now); monday.setDate(now.getDate() - daysToMonday);
+  const friday = new Date(monday); friday.setDate(monday.getDate() + 4);
   const labelStart = monday.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
   const labelEnd   = friday.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' });
   return { start: fmt(monday), end: fmt(friday), label: `${labelStart} – ${labelEnd}` };
 }
 
-/** Bulan ini = 1 s/d akhir bulan berjalan */
 function getMonthRange() {
   const now   = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
   const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return {
-    start: fmt(start),
-    end:   fmt(end),
-    label: now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
-  };
+  return { start: fmt(start), end: fmt(end), label: now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) };
 }
 
 function getPeriodeLabelShort(p: PeriodeFilter) {
   if (p === 'harian')   return 'Hari Ini';
   if (p === 'mingguan') return 'Minggu Ini';
   return 'Bulan Ini';
+}
+
+/** Format sisa waktu lock, misal "12:34" */
+function formatCountdown(sentTs: number): string {
+  const remaining = SENT_LOCK_MS - (Date.now() - sentTs);
+  if (remaining <= 0) return '';
+  const m = Math.floor(remaining / 60000);
+  const s = Math.floor((remaining % 60000) / 1000);
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // ── Fonnte sender ─────────────────────────────────────────────────────────────
@@ -91,7 +114,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
   const [search,         setSearch]         = useState('');
   const [editMap,        setEditMap]        = useState<Record<string, { namaOrtu: string; noWa: string }>>({});
   const [savedIds,       setSavedIds]       = useState<Set<string>>(new Set());
-  const [periodeFilter,  setPeriodeFilter]  = useState<PeriodeFilter>('mingguan'); // default minggu ini
+  const [periodeFilter,  setPeriodeFilter]  = useState<PeriodeFilter>('mingguan');
 
   const [fonnteToken,    setFonnteToken]    = useState('');
   const [tokenInput,     setTokenInput]     = useState('');
@@ -101,8 +124,19 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
   const [sendStatusMap,  setSendStatusMap]  = useState<Record<string, SendStatus>>({});
   const [bulkStatus,     setBulkStatus]     = useState<'idle' | 'sending' | 'done'>('idle');
   const [bulkResult,     setBulkResult]     = useState<{ ok: number; fail: number } | null>(null);
-  // Map<studentId, sentAtTimestamp> — disable selama 15 menit setelah kirim
-  const [sentTsMap,      setSentTsMap]      = useState<Map<string, number>>(new Map());
+
+  // ── Per-siswa lock — persist di localStorage ──────────────────────────────
+  const [sentTsMap, setSentTsMap] = useState<Map<string, number>>(loadSentTs);
+
+  // ── Bulk send lock — persist di localStorage ─────────────────────────────
+  const [bulkSentTs, setBulkSentTs] = useState<number | null>(loadBulkSentTs);
+
+  // Countdown display (update setiap detik)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // ── State kedisiplinan ─────────────────────────────────────────────────────
   const [disiplinMsg,    setDisiplinMsg]    = useState('');
@@ -128,8 +162,8 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     else if (!selectedKelas && kelasList.length > 0) setSelectedKelas(kelasList[0]);
   }, [lockedKelas, kelasList.length]);
 
-  // Reset status terkirim saat ganti kelas atau periode
-  useEffect(() => { setSentTsMap(new Map()); setSendStatusMap({}); }, [selectedKelas, periodeFilter]);
+  // Reset status UI (bukan timestamp) saat ganti kelas/periode
+  useEffect(() => { setSendStatusMap({}); }, [selectedKelas, periodeFilter]);
 
   const kelasStudents = useMemo(() =>
     students
@@ -138,7 +172,6 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
       .sort((a, b) => a.name.localeCompare(b.name, 'id')),
     [students, selectedKelas, search]);
 
-  // ── Filter jurnal berdasarkan kelas + periode dari database terakumulasi ──
   const filteredJournals = useMemo(() => {
     const base = journals.filter(j => j.className === selectedKelas);
     if (periodeFilter === 'harian') {
@@ -146,10 +179,9 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
       return base.filter(j => j.date === today);
     }
     if (periodeFilter === 'mingguan') {
-      const { start, end } = getWeekRange(); // Senin–Jumat penuh
+      const { start, end } = getWeekRange();
       return base.filter(j => j.date >= start && j.date <= end);
     }
-    // bulanan: 1 s/d akhir bulan
     const { start, end } = getMonthRange();
     return base.filter(j => j.date >= start && j.date <= end);
   }, [journals, selectedKelas, periodeFilter]);
@@ -172,7 +204,6 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     setTimeout(() => setSavedIds(p => { const n = new Set(p); n.delete(sid); return n; }), 3000);
   };
 
-  // ── Kalkulasi dari filteredJournals ───────────────────────────────────────
   const mapelList = useMemo(() =>
     Array.from(new Set(filteredJournals.map(j => j.subject))).sort(), [filteredJournals]);
 
@@ -206,7 +237,6 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1);
   }, [mapelList, getNilai]);
 
-  // ── Buat pesan WA ────────────────────────────────────────────────────────
   const periodeStr = () => {
     if (periodeFilter === 'harian')   return getTodayStr().split('-').reverse().join('/');
     if (periodeFilter === 'mingguan') return getWeekRange().label;
@@ -228,7 +258,15 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     return `${sapa}\n\nBerikut rekap nilai putra/putri Bapak/Ibu di SMPN 21 Jambi:\n\n👤 Nama    : ${student.name}\n🏫 Kelas   : ${selectedKelas}\n📅 Periode : ${periodeStr()}\n\n${nilaiStr}\n\n⭐ Rata-rata : ${avg}\n\nTerima kasih atas perhatian dan kerja samanya.\n_SMPN 21 Jambi_`;
   };
 
-  // ── Kirim WA ──────────────────────────────────────────────────────────────
+  // ── Cek lock helpers ──────────────────────────────────────────────────────
+  const isSentLocked = (sid: string) => {
+    const ts = sentTsMap.get(sid);
+    return !!ts && Date.now() - ts < SENT_LOCK_MS;
+  };
+
+  const isBulkLocked = () => !!bulkSentTs && Date.now() - bulkSentTs < SENT_LOCK_MS;
+
+  // ── Kirim 1 siswa ─────────────────────────────────────────────────────────
   const handleSendOne = async (student: Student) => {
     const wali = getWali(student.id);
     if (!wali?.noWa) return;
@@ -237,16 +275,20 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     const pesan  = activeTab === 'kontak' ? buildPesanKehadiran(student) : buildPesanNilai(student);
     const result = await sendWhatsApp(fonnteToken, wali.noWa, pesan);
     setSendStatusMap(p => ({ ...p, [student.id]: result.success ? 'success' : 'error' }));
-    if (result.success) setSentTsMap(p => { const m = new Map(p); m.set(student.id, Date.now()); return m; });
+    if (result.success) {
+      setSentTsMap(p => { const m = new Map<string, number>(p); m.set(student.id, Date.now()); saveSentTs(m); return m; });
+    }
     if (!result.success) alert(`Gagal kirim ke ${student.name}: ${result.reason}`);
     setTimeout(() => setSendStatusMap(p => ({ ...p, [student.id]: 'idle' })), 4000);
   };
 
+  // ── Kirim semua ───────────────────────────────────────────────────────────
   const handleSendAll = async () => {
     if (!fonnteToken) { alert('Token Fonnte belum diatur.'); return; }
     const targets = kelasStudents.filter(s => getWali(s.id)?.noWa);
     if (!targets.length) { alert('Belum ada siswa yang memiliki No. WA orang tua.'); return; }
     if (!confirm(`Kirim laporan ${getPeriodeLabelShort(periodeFilter)} ke ${targets.length} orang tua kelas ${selectedKelas}?`)) return;
+
     setBulkStatus('sending'); setBulkResult(null);
     let ok = 0, fail = 0;
     for (const student of targets) {
@@ -254,53 +296,76 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
       const pesan = activeTab === 'kontak' ? buildPesanKehadiran(student) : buildPesanNilai(student);
       setSendStatusMap(p => ({ ...p, [student.id]: 'sending' }));
       const result = await sendWhatsApp(fonnteToken, wali.noWa, pesan);
-      if (result.success) { ok++; setSendStatusMap(p => ({ ...p, [student.id]: 'success' })); setSentTsMap(p => { const m = new Map(p); m.set(student.id, Date.now()); return m; }); }
-      else                { fail++; setSendStatusMap(p => ({ ...p, [student.id]: 'error' })); }
+      if (result.success) {
+        ok++;
+        setSendStatusMap(p => ({ ...p, [student.id]: 'success' }));
+        setSentTsMap(p => { const m = new Map<string, number>(p); m.set(student.id, Date.now()); saveSentTs(m); return m; });
+      } else {
+        fail++;
+        setSendStatusMap(p => ({ ...p, [student.id]: 'error' }));
+      }
       await new Promise(r => setTimeout(r, 1000));
     }
-    setBulkStatus('done'); setBulkResult({ ok, fail });
+
+    // Simpan timestamp kirim-semua ke localStorage
+    const now = Date.now();
+    setBulkSentTs(now);
+    saveBulkSentTs(now);
+
+    setBulkStatus('done');
+    setBulkResult({ ok, fail });
     setTimeout(() => { setBulkStatus('idle'); setBulkResult(null); setSendStatusMap({}); }, 6000);
   };
 
   const hasToken       = !!fonnteToken;
   const studentsWithWa = kelasStudents.filter(s => getWali(s.id)?.noWa);
-
-  // Semua ortu yang punya WA (lintas kelas) — untuk Kedisiplinan
   const allStudentsWithWa = students.filter(s => getWali(s.id)?.noWa);
 
-  // Cek apakah siswa masih dalam masa lock 15 menit
-  const isSentLocked = (sid: string) => {
-    const ts = sentTsMap.get(sid);
-    return !!ts && Date.now() - ts < SENT_LOCK_MS;
-  };
-
-  // ── Kirim pesan kedisiplinan ke semua ortu ─────────────────────────────────
+  // ── Kirim kedisiplinan ────────────────────────────────────────────────────
   const handleSendDisiplin = async () => {
     if (!disiplinMsg.trim() || !fonnteToken) return;
-    setDisiplinStatus('sending');
-    setDisiplinResult(null);
-    let ok = 0; let fail = 0;
-    const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    setDisiplinStatus('sending'); setDisiplinResult(null);
+    let ok = 0, fail = 0;
     for (const student of allStudentsWithWa) {
-      const wali = getWali(student.id)!;
-      const sapa = wali.namaOrtu ? `Yth. Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
+      const wali  = getWali(student.id)!;
+      const sapa  = wali.namaOrtu ? `Yth. Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
       const pesan = `${sapa}\n\n📢 *Pengumuman Kedisiplinan Siswa*\n🏫 SMPN 21 Jambi\n\n${disiplinMsg.trim()}\n\nMohon perhatian dan kerja samanya.\n_SMPN 21 Jambi_`;
       const result = await sendWhatsApp(fonnteToken, wali.noWa, pesan);
       if (result.success) ok++; else fail++;
       await new Promise(r => setTimeout(r, 1000));
     }
-    setDisiplinStatus('done');
-    setDisiplinResult({ ok, fail });
+    setDisiplinStatus('done'); setDisiplinResult({ ok, fail });
     setTimeout(() => { setDisiplinStatus('idle'); setDisiplinResult(null); }, 8000);
   };
-  const week           = getWeekRange();
-  const month          = getMonthRange();
+
+  const week  = getWeekRange();
+  const month = getMonthRange();
 
   const periodeOptions = [
-    { id: 'harian'   as PeriodeFilter, label: 'Hari Ini',  sub: getTodayStr().split('-').reverse().join('/') },
+    { id: 'harian'   as PeriodeFilter, label: 'Hari Ini',   sub: getTodayStr().split('-').reverse().join('/') },
     { id: 'mingguan' as PeriodeFilter, label: 'Minggu Ini', sub: week.label },
     { id: 'bulanan'  as PeriodeFilter, label: 'Bulan Ini',  sub: month.label },
   ];
+
+  // ── Tombol Kirim Semua (reusable) ─────────────────────────────────────────
+  const bulkLocked    = isBulkLocked();
+  const bulkCountdown = bulkSentTs ? formatCountdown(bulkSentTs) : '';
+
+  const SendAllButton = () => (
+    <button
+      onClick={handleSendAll}
+      disabled={!studentsWithWa.length || bulkStatus === 'sending' || bulkLocked}
+      title={bulkLocked ? `Tunggu ${bulkCountdown} sebelum kirim lagi` : undefined}
+      className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {bulkStatus === 'sending'
+        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</>
+        : bulkLocked
+          ? <><Clock className="w-3.5 h-3.5" />Tunggu {bulkCountdown}</>
+          : <><Send className="w-3.5 h-3.5" />Kirim {getPeriodeLabelShort(periodeFilter)} ke Semua ({studentsWithWa.length})</>
+      }
+    </button>
+  );
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
@@ -308,11 +373,10 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     </div>
   );
 
-  // ── Admin: langsung tampil form Kedisiplinan saja ──────────────────────────
+  // ── Admin: tampil Kedisiplinan saja ───────────────────────────────────────
   if (isAdmin) {
     return (
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
@@ -321,17 +385,13 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             </h2>
             <p className="text-slate-500 text-sm mt-0.5">Kirim pengumuman kedisiplinan ke semua orang tua murid.</p>
           </div>
-          {/* Token button */}
-          <button
-            onClick={() => setShowTokenForm(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${fonnteToken ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'}`}
-          >
+          <button onClick={() => setShowTokenForm(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${fonnteToken ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'}`}>
             <Settings className="w-4 h-4" />
             {fonnteToken ? 'Fonnte ✓' : 'Atur Token WA'}
           </button>
         </div>
 
-        {/* Token form */}
         {showTokenForm && (
           <div className="bg-white rounded-2xl border border-indigo-200 shadow-sm p-5 space-y-3">
             <div className="flex items-center justify-between">
@@ -354,27 +414,19 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
           </div>
         )}
 
-        {/* Card utama kedisiplinan */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Info header */}
           <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
               <Users className="w-4 h-4 text-amber-600" />
             </div>
             <div>
               <p className="text-sm font-semibold text-amber-900">Pesan Kedisiplinan ke Semua Orang Tua</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Pesan akan dikirim ke <span className="font-bold">{allStudentsWithWa.length} orang tua</span> yang sudah terdaftar nomor WA-nya (semua kelas).
-              </p>
+              <p className="text-xs text-amber-700 mt-0.5">Pesan akan dikirim ke <span className="font-bold">{allStudentsWithWa.length} orang tua</span> yang sudah terdaftar nomor WA-nya (semua kelas).</p>
             </div>
           </div>
-
-          {/* Form */}
           <div className="px-5 py-5 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Isi Pesan Kedisiplinan
-              </label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Isi Pesan Kedisiplinan</label>
               <textarea
                 className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-slate-900 transition-colors resize-none"
                 rows={6}
@@ -383,64 +435,40 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                 onChange={e => setDisiplinMsg(e.target.value)}
                 disabled={disiplinStatus === 'sending'}
               />
-              <p className="text-xs text-slate-400 mt-1.5">
-                Pesan otomatis ditambahkan salam pembuka (nama ortu), tanggal, dan tanda tangan SMPN 21 Jambi.
-              </p>
+              <p className="text-xs text-slate-400 mt-1.5">Pesan otomatis ditambahkan salam pembuka (nama ortu), tanggal, dan tanda tangan SMPN 21 Jambi.</p>
             </div>
-
-            {/* Tombol kirim */}
             <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={handleSendDisiplin}
-                disabled={!disiplinMsg.trim() || disiplinStatus === 'sending' || !fonnteToken || allStudentsWithWa.length === 0}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-semibold rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
+              <button onClick={handleSendDisiplin} disabled={!disiplinMsg.trim() || disiplinStatus === 'sending' || !fonnteToken || allStudentsWithWa.length === 0}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-semibold rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {disiplinStatus === 'sending'
                   ? <><Loader2 className="w-4 h-4 animate-spin" />Mengirim ke {allStudentsWithWa.length} ortu...</>
-                  : <><Send className="w-4 h-4" />Kirim ke Semua Ortu ({allStudentsWithWa.length})</>
-                }
+                  : <><Send className="w-4 h-4" />Kirim ke Semua Ortu ({allStudentsWithWa.length})</>}
               </button>
               {disiplinMsg.trim() && disiplinStatus === 'idle' && (
-                <button onClick={() => setDisiplinMsg('')} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
-                  Hapus pesan
-                </button>
+                <button onClick={() => setDisiplinMsg('')} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">Hapus pesan</button>
               )}
             </div>
-
-            {/* Tidak ada token */}
             {!fonnteToken && (
               <div className="flex items-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
-                <X className="w-4 h-4 flex-shrink-0" />
-                Token Fonnte belum diisi. Klik "Atur Token WA" di pojok kanan atas.
+                <X className="w-4 h-4 flex-shrink-0" />Token Fonnte belum diisi. Klik "Atur Token WA" di pojok kanan atas.
               </div>
             )}
-
-            {/* Tidak ada kontak */}
             {allStudentsWithWa.length === 0 && (
               <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500">
-                <Users className="w-4 h-4 flex-shrink-0" />
-                Belum ada nomor WA ortu yang terdaftar. Minta wali kelas isi kontak di menu Wali Murid.
+                <Users className="w-4 h-4 flex-shrink-0" />Belum ada nomor WA ortu yang terdaftar.
               </div>
             )}
-
-            {/* Hasil kirim */}
             {disiplinResult && (
-              <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm border ${
-                disiplinResult.fail === 0
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  : 'bg-amber-50 border-amber-200 text-amber-700'
-              }`}>
+              <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm border ${disiplinResult.fail === 0 ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
                 <CheckCheck className="w-4 h-4 flex-shrink-0" />
                 Selesai! <span className="font-bold">{disiplinResult.ok} berhasil</span> dikirim
                 {disiplinResult.fail > 0 && <>, <span className="font-bold text-rose-600">{disiplinResult.fail} gagal</span></>}.
               </div>
             )}
           </div>
-
-          {/* Preview pesan */}
           {disiplinMsg.trim() && (
             <div className="px-5 py-4 bg-slate-50 border-t border-slate-100">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Preview Pesan (contoh untuk 1 ortu)</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Preview Pesan</p>
               <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
                 {`Yth. Bapak/Ibu [Nama Ortu],\n\n📢 *Pengumuman Kedisiplinan Siswa*\n🏫 SMPN 21 Jambi\n\n${disiplinMsg.trim()}\n\nMohon perhatian dan kerja samanya.\n_SMPN 21 Jambi_`}
               </div>
@@ -451,6 +479,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     );
   }
 
+  // ── Guru biasa ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
 
@@ -463,10 +492,8 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
           </h2>
           <p className="text-slate-500 text-sm mt-0.5">Kelola kontak orang tua dan kirim laporan via WhatsApp.</p>
         </div>
-        <button
-          onClick={() => setShowTokenForm(v => !v)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${hasToken ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'}`}
-        >
+        <button onClick={() => setShowTokenForm(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${hasToken ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'}`}>
           <Settings className="w-4 h-4" />
           {hasToken ? 'Fonnte ✓' : 'Atur Token WA'}
         </button>
@@ -506,13 +533,13 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
       {/* Tab */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
         {([
-          { id: 'kontak',       label: 'Kontak Ortu',   icon: Phone },
-          { id: 'nilai',        label: 'Rekap Nilai',   icon: Star },
-          ...(isAdmin ? [{ id: 'kedisiplinan', label: 'Kedisiplinan', icon: Users }] : []),
+          { id: 'kontak', label: 'Kontak Ortu', icon: Phone },
+          { id: 'nilai',  label: 'Rekap Nilai', icon: Star },
         ] as { id: ActiveTab; label: string; icon: any }[]).map(tab => {
           const Icon = tab.icon;
           return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === tab.id ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <Icon className="w-4 h-4" />{tab.label}
             </button>
           );
@@ -529,7 +556,8 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             </div>
           ) : (
             <div className="relative">
-              <select value={selectedKelas} onChange={e => setSelectedKelas(e.target.value)} disabled={!kelasList.length} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50 appearance-none">
+              <select value={selectedKelas} onChange={e => setSelectedKelas(e.target.value)} disabled={!kelasList.length}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50 appearance-none">
                 {kelasList.length ? kelasList.map(k => <option key={k} value={k}>Kelas {k}</option>) : <option value="">Belum ada kelas</option>}
               </select>
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -537,41 +565,47 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
           )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-            <input type="text" placeholder="Cari nama atau NIS..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50" />
+            <input type="text" placeholder="Cari nama atau NIS..." value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 focus:ring-2 focus:ring-indigo-500 bg-slate-50" />
           </div>
         </div>
 
-        {/* Periode pilihan */}
+        {/* Periode */}
         <div className="pt-1 border-t border-slate-100">
           <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-500">
-            <CalendarDays className="w-3.5 h-3.5" />
-            Periode Laporan
+            <CalendarDays className="w-3.5 h-3.5" />Periode Laporan
           </div>
           <div className="grid grid-cols-3 gap-2">
             {periodeOptions.map(opt => (
-              <button
-                key={opt.id}
-                onClick={() => setPeriodeFilter(opt.id)}
-                className={`flex flex-col items-center py-2.5 px-2 rounded-xl border text-center transition-all ${
-                  periodeFilter === opt.id
-                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
-                }`}
-              >
+              <button key={opt.id} onClick={() => setPeriodeFilter(opt.id)}
+                className={`flex flex-col items-center py-2.5 px-2 rounded-xl border text-center transition-all ${periodeFilter === opt.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}>
                 <span className="text-xs font-bold">{opt.label}</span>
-                <span className={`text-[10px] mt-0.5 leading-tight ${periodeFilter === opt.id ? 'text-indigo-200' : 'text-slate-400'}`}>
-                  {opt.sub}
-                </span>
+                <span className={`text-[10px] mt-0.5 leading-tight ${periodeFilter === opt.id ? 'text-indigo-200' : 'text-slate-400'}`}>{opt.sub}</span>
               </button>
             ))}
           </div>
           <p className="mt-2 text-xs text-slate-400">
             {kelasStudents.length} siswa · {studentsWithWa.length} ada No. WA ·{' '}
             <span className={`font-semibold ${filteredJournals.length ? 'text-indigo-600' : 'text-slate-400'}`}>
-              {filteredJournals.length} pertemuan ditemukan
+              {filteredJournals.length} pertemuan
             </span>
           </p>
         </div>
+
+        {/* ── Tombol Kirim Semua — DI SINI (atas, dalam filter panel) ── */}
+        {studentsWithWa.length > 0 && (
+          <div className="pt-1 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+            <span className="text-xs text-slate-500">
+              Kirim laporan <span className="font-semibold text-indigo-600">{getPeriodeLabelShort(periodeFilter)}</span> sekarang:
+              {bulkLocked && (
+                <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-semibold">
+                  <Clock className="w-3 h-3" /> Cooldown {bulkCountdown}
+                </span>
+              )}
+            </span>
+            <SendAllButton />
+          </div>
+        )}
       </div>
 
       {/* ── TAB KONTAK ─────────────────────────────────────────────────── */}
@@ -586,7 +620,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2">
               <Phone className="w-4 h-4 text-indigo-500 flex-shrink-0" />
               <p className="text-xs text-indigo-700 font-medium">
-                Tombol kirim (➤) mengirim rekap kehadiran <strong>{getPeriodeLabelShort(periodeFilter)}</strong> ke orang tua.
+                Tombol (➤) mengirim rekap kehadiran <strong>{getPeriodeLabelShort(periodeFilter)}</strong> ke orang tua. Lock 15 menit setelah terkirim.
               </p>
             </div>
             <div className="divide-y divide-slate-100">
@@ -598,6 +632,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                 const hasWa   = !!wali?.noWa;
                 const status  = sendStatusMap[student.id] ?? 'idle';
                 const isSent  = isSentLocked(student.id);
+                const countdown = sentTsMap.get(student.id) ? formatCountdown(sentTsMap.get(student.id)!) : '';
                 return (
                   <div key={student.id} className={`px-5 py-4 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
                     <div className="flex items-center justify-between mb-3">
@@ -611,7 +646,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                       <div className="flex items-center gap-1.5">
                         {isSent && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
-                            <CheckCheck className="w-3 h-3" /> Terkirim
+                            <CheckCheck className="w-3 h-3" /> Terkirim · {countdown}
                           </span>
                         )}
                         {hasWa && !isDirty && !saved && !isSent && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700"><CheckCircle2 className="w-3 h-3" /> Tersimpan</span>}
@@ -630,16 +665,17 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                           <input className={inputCls} placeholder="8123456789" value={edit.noWa} onChange={e => handleChange(student.id, 'noWa', e.target.value.replace(/\D/g, ''))} />
                         </div>
                       </div>
-                      <button onClick={() => handleSave(student.id)} disabled={!isDirty} className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                      <button onClick={() => handleSave(student.id)} disabled={!isDirty}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
                         <Save className="w-3.5 h-3.5" /> Simpan
                       </button>
                       <button onClick={() => handleSendOne(student)}
                         disabled={!hasWa || isSent || status === 'sending' || bulkStatus === 'sending'}
-                        title={!hasWa ? 'No. WA belum diisi' : isSent ? 'Sudah terkirim' : `Kirim rekap ${getPeriodeLabelShort(periodeFilter)}`}
+                        title={!hasWa ? 'No. WA belum diisi' : isSent ? `Terkirim, tunggu ${countdown}` : `Kirim rekap ${getPeriodeLabelShort(periodeFilter)}`}
                         className={`flex items-center justify-center w-10 h-10 rounded-xl transition-colors ${
-                          isSent              ? 'bg-blue-500 text-white cursor-not-allowed' :
-                          status === 'error'  ? 'bg-rose-500 text-white' :
-                          status === 'sending'? 'bg-slate-200 text-slate-400 cursor-not-allowed' :
+                          isSent               ? 'bg-blue-500 text-white cursor-not-allowed' :
+                          status === 'error'   ? 'bg-rose-500 text-white' :
+                          status === 'sending' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' :
                           hasWa ? 'bg-emerald-600 text-white hover:bg-emerald-700' :
                           'bg-slate-100 text-slate-300 cursor-not-allowed'
                         }`}>
@@ -652,11 +688,10 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                 );
               })}
             </div>
+            {/* Footer tabel — tombol kirim semua juga di sini (bawah) sebagai shortcut */}
             <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-slate-500"><span className="font-bold text-emerald-700">{studentsWithWa.length}</span>/{kelasStudents.length} siswa sudah ada No. WA ortu</p>
-              <button onClick={handleSendAll} disabled={!studentsWithWa.length || bulkStatus === 'sending'} className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                {bulkStatus === 'sending' ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</> : <><Send className="w-3.5 h-3.5" />Kirim Laporan {getPeriodeLabelShort(periodeFilter)} ke Semua ({studentsWithWa.length})</>}
-              </button>
+              <SendAllButton />
             </div>
           </div>
         )
@@ -705,6 +740,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                     const hasWa  = !!wali?.noWa;
                     const status = sendStatusMap[student.id] ?? 'idle';
                     const isSent = isSentLocked(student.id);
+                    const countdown = sentTsMap.get(student.id) ? formatCountdown(sentTsMap.get(student.id)!) : '';
                     return (
                       <tr key={student.id} className={`${rowBg} hover:bg-indigo-50/20 transition-colors`}>
                         <td className="px-3 py-3 text-slate-400 text-xs text-center sticky left-0 bg-inherit">{idx + 1}</td>
@@ -730,7 +766,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                         <td className="px-3 py-3 text-center">
                           <button onClick={() => handleSendOne(student)}
                             disabled={!hasWa || isSent || status === 'sending' || bulkStatus === 'sending'}
-                            title={!hasWa ? 'No. WA belum diisi' : isSent ? 'Sudah terkirim' : `Kirim laporan nilai ${getPeriodeLabelShort(periodeFilter)}`}
+                            title={!hasWa ? 'No. WA belum diisi' : isSent ? `Tunggu ${countdown}` : `Kirim laporan ${getPeriodeLabelShort(periodeFilter)}`}
                             className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                               isSent               ? 'bg-blue-500 text-white cursor-not-allowed' :
                               status === 'error'   ? 'bg-rose-500 text-white' :
@@ -751,108 +787,10 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             </div>
             <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between flex-wrap gap-2">
               <p className="text-xs text-slate-500">{mapelList.length} mapel · {kelasStudents.length} siswa · <span className="font-semibold text-indigo-600">{getPeriodeLabelShort(periodeFilter)}</span></p>
-              <button onClick={handleSendAll} disabled={!studentsWithWa.length || bulkStatus === 'sending'} className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                {bulkStatus === 'sending' ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Mengirim...</> : <><Send className="w-3.5 h-3.5" />Kirim Laporan {getPeriodeLabelShort(periodeFilter)} ke Ortu ({studentsWithWa.length})</>}
-              </button>
+              <SendAllButton />
             </div>
           </div>
         )
-      )}
-
-      {/* ── Tab Kedisiplinan ─────────────────────────────────────────────────── */}
-      {activeTab === 'kedisiplinan' && isAdmin && (
-        <div className="divide-y divide-slate-100">
-          {/* Header info */}
-          <div className="px-5 py-4 bg-amber-50 border-b border-amber-100 flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Users className="w-4 h-4 text-amber-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-amber-900">Pesan Kedisiplinan ke Semua Orang Tua</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Pesan akan dikirim ke <span className="font-bold">{allStudentsWithWa.length} orang tua</span> yang sudah terdaftar nomor WA-nya (semua kelas).
-              </p>
-            </div>
-          </div>
-
-          {/* Form tulis pesan */}
-          <div className="px-5 py-5 space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Isi Pesan Kedisiplinan
-              </label>
-              <textarea
-                className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-slate-900 transition-colors resize-none"
-                rows={6}
-                placeholder={`Contoh:\nDiberitahukan kepada orang tua siswa bahwa akan dilaksanakan pemeriksaan kuku dan kerapian rambut pada hari Senin, 10 Maret 2026.\n\nMohon pastikan putra/putri Bapak/Ibu datang ke sekolah dalam kondisi rapi dan bersih.`}
-                value={disiplinMsg}
-                onChange={e => setDisiplinMsg(e.target.value)}
-                disabled={disiplinStatus === 'sending'}
-              />
-              <p className="text-xs text-slate-400 mt-1.5">
-                Pesan otomatis ditambahkan salam pembuka (nama ortu), tanggal, dan tanda tangan SMPN 21 Jambi.
-              </p>
-            </div>
-
-            {/* Tombol kirim */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                onClick={handleSendDisiplin}
-                disabled={!disiplinMsg.trim() || disiplinStatus === 'sending' || !fonnteToken || allStudentsWithWa.length === 0}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-amber-600 text-white text-sm font-semibold rounded-xl hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {disiplinStatus === 'sending'
-                  ? <><Loader2 className="w-4 h-4 animate-spin" />Mengirim ke {allStudentsWithWa.length} ortu...</>
-                  : <><Send className="w-4 h-4" />Kirim ke Semua Ortu ({allStudentsWithWa.length})</>
-                }
-              </button>
-              {disiplinMsg.trim() && disiplinStatus === 'idle' && (
-                <button onClick={() => setDisiplinMsg('')} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
-                  Hapus pesan
-                </button>
-              )}
-            </div>
-
-            {/* Tidak ada token */}
-            {!fonnteToken && (
-              <div className="flex items-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
-                <X className="w-4 h-4 flex-shrink-0" />
-                Token Fonnte belum diisi. Isi dulu di pojok kanan atas.
-              </div>
-            )}
-
-            {/* Tidak ada kontak terdaftar */}
-            {allStudentsWithWa.length === 0 && (
-              <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-500">
-                <Users className="w-4 h-4 flex-shrink-0" />
-                Belum ada nomor WA ortu yang terdaftar. Isi kontak di tab <strong>Kontak Ortu</strong> dulu.
-              </div>
-            )}
-
-            {/* Hasil kirim */}
-            {disiplinResult && (
-              <div className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm border ${
-                disiplinResult.fail === 0
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  : 'bg-amber-50 border-amber-200 text-amber-700'
-              }`}>
-                <CheckCheck className="w-4 h-4 flex-shrink-0" />
-                Selesai! <span className="font-bold">{disiplinResult.ok} berhasil</span> dikirim
-                {disiplinResult.fail > 0 && <>, <span className="font-bold text-rose-600">{disiplinResult.fail} gagal</span></>}.
-              </div>
-            )}
-          </div>
-
-          {/* Preview pesan */}
-          {disiplinMsg.trim() && (
-            <div className="px-5 py-4 bg-slate-50">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Preview Pesan (contoh untuk 1 ortu)</p>
-              <div className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-700 whitespace-pre-wrap font-mono leading-relaxed">
-                {`Yth. Bapak/Ibu [Nama Ortu],\n\n📢 *Pengumuman Kedisiplinan Siswa*\n🏫 SMPN 21 Jambi\n\n${disiplinMsg.trim()}\n\nMohon perhatian dan kerja samanya.\n_SMPN 21 Jambi_`}
-              </div>
-            </div>
-          )}
-        </div>
       )}
     </div>
   );
