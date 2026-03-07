@@ -228,13 +228,22 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
   }, [filteredJournals]);
 
   const getAbsensi = useCallback((sid: string) => {
-    let h = 0, s = 0, i = 0, a = 0;
+    // Kelompokkan per hari agar 3 mapel dalam 1 hari = 1 hari, bukan 3
+    const byDate = new Map<string, Set<string>>();
     filteredJournals.forEach(j => {
+      if (!j.date) return;
       const st = j.studentAttendance?.[sid];
-      if (st === 'present') h++;
-      else if (st === 'sick') s++;
-      else if (st === 'permission') i++;
-      else if (st === 'absent') a++;
+      if (!st) return;
+      if (!byDate.has(j.date)) byDate.set(j.date, new Set());
+      byDate.get(j.date)!.add(st);
+    });
+    // Per hari ambil 1 status, prioritas: absent > sick > permission > present
+    let h = 0, s = 0, i = 0, a = 0;
+    byDate.forEach(statuses => {
+      if (statuses.has('absent'))          a++;
+      else if (statuses.has('sick'))       s++;
+      else if (statuses.has('permission')) i++;
+      else if (statuses.has('present'))    h++;
     });
     const total = h + s + i + a;
     return { h, s, i, a, total, pct: total ? Math.round((h / total) * 100) : 0 };
@@ -257,7 +266,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     const abs  = getAbsensi(student.id);
     const wali = getWali(student.id);
     const sapa = wali?.namaOrtu ? `Yth. Bapak/Ibu ${wali.namaOrtu},` : 'Yth. Bapak/Ibu Orang Tua/Wali,';
-    return `${sapa}\n\nBerikut rekap kehadiran putra/putri Bapak/Ibu di SMPN 21 Jambi:\n\n👤 Nama    : ${student.name}\n🏫 Kelas   : ${selectedKelas}\n📅 Periode : ${periodeStr()}\n\n✅ Hadir   : ${abs.h} kali\n🤒 Sakit   : ${abs.s} kali\n📋 Izin    : ${abs.i} kali\n❌ Alpa    : ${abs.a} kali\n📊 % Hadir : ${abs.pct}%\n\nTerima kasih atas perhatian dan kerja samanya.\n_SMPN 21 Jambi_`;
+    return `${sapa}\n\nBerikut rekap kehadiran putra/putri Bapak/Ibu di SMPN 21 Jambi:\n\n👤 Nama    : ${student.name}\n🏫 Kelas   : ${selectedKelas}\n📅 Periode : ${periodeStr()}\n\n✅ Hadir   : ${abs.h} hari\n🤒 Sakit   : ${abs.s} hari\n📋 Izin    : ${abs.i} hari\n❌ Alpa    : ${abs.a} hari\n📊 % Hadir : ${abs.pct}%\n\nTerima kasih atas perhatian dan kerja samanya.\n_SMPN 21 Jambi_`;
   };
 
   const buildPesanNilai = (student: Student) => {
