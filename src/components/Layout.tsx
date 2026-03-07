@@ -42,8 +42,17 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
     }
   };
 
-  // Guru tabs — tampilkan Wali Murid hanya jika guru punya waliKelas
+  // Guru tabs — Wali Murid dihapus dari bottom nav, dipindah ke top bar
   const guruTabs = [
+    { id: 'dashboard',       label: 'Beranda',     icon: Home },
+    { id: 'history',         label: 'Riwayat',     icon: BookOpen },
+    { id: 'add',             label: 'Isi Jurnal',  icon: PlusCircle },
+    { id: 'penilaian',       label: 'Penilaian',   icon: Star },
+    { id: 'rekap-kehadiran', label: 'Rekap Hadir', icon: ClipboardList },
+  ];
+
+  // Sidebar desktop guru tetap tampilkan Wali Murid
+  const guruSidebarTabs = [
     { id: 'dashboard',       label: 'Beranda',     icon: Home },
     { id: 'history',         label: 'Riwayat',     icon: BookOpen },
     { id: 'add',             label: 'Isi Jurnal',  icon: PlusCircle },
@@ -54,7 +63,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
       : []),
   ];
 
-  // Admin tabs — dengan Wali Murid (termasuk tab Kedisiplinan)
+  // Admin tabs
   const adminTabs = [
     { id: 'admin-dashboard', label: 'Beranda',    icon: Home },
     { id: 'monitoring',      label: 'Monitoring', icon: Activity },
@@ -64,7 +73,8 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
     { id: 'akun',            label: 'Akun',       icon: Shield },
   ];
 
-  const tabs = user.role === 'admin' ? adminTabs : guruTabs;
+  const bottomTabs = user.role === 'admin' ? adminTabs : guruTabs;
+  const sidebarTabs = user.role === 'admin' ? adminTabs : guruSidebarTabs;
 
   const SchoolLogo = ({ className }: { className: string }) => (
     <img
@@ -82,7 +92,8 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-      {/* Sidebar desktop */}
+
+      {/* ── Sidebar desktop ── */}
       <aside className="hidden md:flex flex-col w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 shadow-sm z-10 transition-colors duration-200">
         <div className="p-6 flex items-center space-x-3">
           <SchoolLogo className="w-9 h-9 object-contain flex-shrink-0" />
@@ -94,8 +105,9 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
             <p className="text-[10px] text-slate-400 leading-tight">SMPN 21 Jambi</p>
           </div>
         </div>
+
         <nav className="flex-1 px-4 space-y-1.5 mt-4">
-          {tabs.map(tab => {
+          {sidebarTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
@@ -159,10 +171,12 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
         </div>
       </aside>
 
-      {/* Main content */}
+      {/* ── Main content ── */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative bg-slate-50 dark:bg-slate-900 transition-colors duration-200">
-        {/* Mobile header */}
+
+        {/* ── Mobile header ── */}
         <header className="md:hidden bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between sticky top-0 z-20 shadow-sm transition-colors duration-200">
+          {/* Logo & nama */}
           <div className="flex items-center space-x-2">
             <SchoolLogo className="w-8 h-8 object-contain" />
             <div style={{ display: 'none' }} className="w-7 h-7 bg-indigo-600 rounded-md items-center justify-center shadow-sm flex">
@@ -173,12 +187,41 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
               <p className="text-[9px] text-slate-400 leading-tight">SMPN 21 Jambi</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3 relative">
+
+          {/* Kanan: Wali Murid shortcut + Avatar */}
+          <div className="flex items-center gap-2 relative">
+
+            {/* ── Tombol Wali Murid di top bar (hanya guru dengan waliKelas) ── */}
+            {user.role === 'guru' && user.waliKelas && (
+              <button
+                onClick={() => { onTabChange('wali-murid'); setIsMenuOpen(false); }}
+                className={cn(
+                  "relative flex flex-col items-center justify-center w-10 h-10 rounded-xl transition-all duration-200",
+                  activeTab === 'wali-murid'
+                    ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                )}
+                title={`Wali Kelas ${user.waliKelas}`}
+              >
+                <Phone className="w-4 h-4" />
+                <span className="text-[8px] font-black leading-none mt-0.5 tracking-tight">
+                  {user.waliKelas.replace(/\s/g, '')}
+                </span>
+                {/* Dot aktif */}
+                {activeTab === 'wali-murid' && (
+                  <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-indigo-600 rounded-full" />
+                )}
+              </button>
+            )}
+
+            {/* Avatar / dropdown menu */}
             <button onClick={() => setIsMenuOpen(!isMenuOpen)}>
               <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-500/20 rounded-full flex items-center justify-center text-indigo-700 dark:text-indigo-400 font-bold text-sm border border-indigo-200 dark:border-indigo-500/30 uppercase">
                 {user.name.charAt(0)}
               </div>
             </button>
+
+            {/* Dropdown menu */}
             {isMenuOpen && (
               <div className="absolute top-full right-0 mt-2 w-56 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg overflow-hidden z-50">
                 <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
@@ -219,12 +262,13 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
         </div>
       </main>
 
-      {/* Bottom nav mobile */}
+      {/* ── Bottom nav mobile ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 pb-safe z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] transition-colors duration-200">
         <div className="flex justify-around items-center h-16 relative">
-          {tabs.map(tab => {
+          {bottomTabs.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
+
             if (tab.id === 'add') {
               return (
                 <div key={tab.id} className="relative w-full h-full flex justify-center">
@@ -257,6 +301,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
                 </div>
               );
             }
+
             return (
               <button key={tab.id} onClick={() => onTabChange(tab.id)}
                 className={cn(
@@ -272,7 +317,7 @@ export function Layout({ children, activeTab, onTabChange, user, onLogout, onCha
         </div>
       </nav>
 
-      {/* Password Modal */}
+      {/* ── Password Modal ── */}
       {isPasswordModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
