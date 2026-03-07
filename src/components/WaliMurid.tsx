@@ -110,6 +110,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
   const [sentTsMap,      setSentTsMap]      = useState<Map<string, number>>(loadSentTs);
   const [bulkSentTs,     setBulkSentTs]     = useState<number | null>(loadBulkSentTs);
   const [, setTick] = useState(0);
+  const [expandedMapel, setExpandedMapel] = useState<Set<string>>(new Set());
   const [disiplinMsg,    setDisiplinMsg]    = useState('');
   const [disiplinStatus, setDisiplinStatus] = useState<'idle' | 'sending' | 'done'>('idle');
   const [disiplinResult, setDisiplinResult] = useState<{ ok: number; fail: number } | null>(null);
@@ -606,81 +607,189 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                 </div>
               </div>
 
-              {/* Rekap kehadiran per mapel */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-4 h-4 text-slate-400" />Rekap Kehadiran per Mata Pelajaran
-                </h3>
-                {rekapPerMapel.map(({ subject, guru, totalPertemuan, siswaData }) => (
-                  <div key={subject} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    {/* Header mapel */}
-                    <div className="flex items-center justify-between px-5 py-3 bg-indigo-50 border-b border-indigo-100">
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-indigo-600" />
-                        <span className="text-sm font-bold text-indigo-800">{subject}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-indigo-500">Guru:</span>
-                        <span className="font-semibold text-indigo-700">{guru}</span>
-                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded-full font-bold">{totalPertemuan} pertemuan</span>
-                      </div>
-                    </div>
-
-                    {/* Tabel siswa */}
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-100">
-                            <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nama Siswa</th>
-                            <th className="px-3 py-2.5 text-center text-[10px] font-bold text-emerald-600 uppercase tracking-wider">H</th>
-                            <th className="px-3 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wider">S</th>
-                            <th className="px-3 py-2.5 text-center text-[10px] font-bold text-blue-600 uppercase tracking-wider">I</th>
-                            <th className="px-3 py-2.5 text-center text-[10px] font-bold text-rose-600 uppercase tracking-wider">A</th>
-                            <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">%</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50">
-                          {siswaData.map((row, idx) => (
-                            <tr key={row.student.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
-                              <td className="px-4 py-2.5">
-                                <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
-                                <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
-                              </td>
-                              <td className="px-3 py-2.5 text-center font-bold text-emerald-700 text-sm">{row.h}</td>
-                              <td className="px-3 py-2.5 text-center font-bold text-amber-600 text-sm">{row.sk}</td>
-                              <td className="px-3 py-2.5 text-center font-bold text-blue-600 text-sm">{row.iz}</td>
-                              <td className="px-3 py-2.5 text-center font-bold text-rose-600 text-sm">{row.alp}</td>
-                              <td className="px-3 py-2.5 text-center">
-                                <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  row.pct >= 75 ? 'bg-emerald-100 text-emerald-700' :
-                                  row.pct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'
-                                }`}>{row.pct}%</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                        {/* Footer rata-rata kelas per mapel ini */}
-                        <tfoot>
-                          <tr className="bg-indigo-50 border-t border-indigo-100">
-                            <td className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase">Rata-rata Kelas</td>
-                            {(['h','sk','iz','alp'] as const).map(key => {
-                              const total = siswaData.reduce((a, r) => a + r[key], 0);
-                              return <td key={key} className="px-3 py-2 text-center text-xs font-bold text-indigo-600">{total}</td>;
-                            })}
-                            <td className="px-3 py-2 text-center">
-                              {(() => {
-                                const avg = siswaData.length > 0
-                                  ? Math.round(siswaData.reduce((a, r) => a + r.pct, 0) / siswaData.length)
-                                  : 0;
-                                return <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold ${avg >= 75 ? 'bg-emerald-100 text-emerald-700' : avg >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{avg}%</span>;
-                              })()}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
-                    </div>
+              {/* Rekap kehadiran per mapel — Accordion/Dropdown */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-slate-400" />Rekap Kehadiran per Mata Pelajaran
+                  </h3>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setExpandedMapel(new Set(rekapPerMapel.map(r => r.subject)))}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                    >
+                      Buka Semua
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      onClick={() => setExpandedMapel(new Set())}
+                      className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
+                    >
+                      Tutup Semua
+                    </button>
                   </div>
-                ))}
+                </div>
+
+                {rekapPerMapel.map(({ subject, guru, totalPertemuan, siswaData }) => {
+                  const isOpen = expandedMapel.has(subject);
+                  const toggleMapel = () => {
+                    setExpandedMapel(prev => {
+                      const next = new Set(prev);
+                      isOpen ? next.delete(subject) : next.add(subject);
+                      return next;
+                    });
+                  };
+                  const avgPct = siswaData.length > 0
+                    ? Math.round(siswaData.reduce((a, r) => a + r.pct, 0) / siswaData.length)
+                    : 0;
+                  const totalH   = siswaData.reduce((a, r) => a + r.h,   0);
+                  const totalAlp = siswaData.reduce((a, r) => a + r.alp, 0);
+
+                  return (
+                    <div
+                      key={subject}
+                      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ${
+                        isOpen ? 'border-indigo-200' : 'border-slate-200'
+                      }`}
+                    >
+                      {/* ── Header dropdown (klik untuk buka/tutup) ── */}
+                      <button
+                        type="button"
+                        onClick={() => toggleMapel()}
+                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50/70 transition-colors select-none"
+                      >
+                        {/* Kiri: ikon + nama mapel + badge guru */}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
+                            isOpen ? 'bg-indigo-600' : 'bg-indigo-50'
+                          }`}>
+                            <BookOpen className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-indigo-600'}`} />
+                          </div>
+                          <div className="text-left min-w-0">
+                            <p className={`text-sm font-bold truncate ${isOpen ? 'text-indigo-700' : 'text-slate-900'}`}>
+                              {subject}
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">
+                              Guru: <span className="font-semibold text-slate-600">{guru}</span>
+                              <span className="mx-1.5 text-slate-300">·</span>
+                              {totalPertemuan} pertemuan
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Kanan: badge ringkasan + chevron */}
+                        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                          {/* Rata-rata kehadiran kelas */}
+                          <span className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' :
+                            avgPct >= 50 ? 'bg-amber-100 text-amber-700'    :
+                            'bg-rose-100 text-rose-700'
+                          }`}>
+                            Rata {avgPct}%
+                          </span>
+                          {/* Mini chip hadir/alpa */}
+                          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
+                            <span className="text-emerald-600">{totalH}H</span>
+                            {totalAlp > 0 && <><span className="text-slate-300">/</span><span className="text-rose-600">{totalAlp}A</span></>}
+                          </span>
+                          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+
+                      {/* ── Body: tabel siswa (tampil hanya saat open) ── */}
+                      {isOpen && (
+                        <div className="border-t border-slate-100">
+                          {/* Summary strip */}
+                          <div className="flex items-center gap-3 px-5 py-2.5 bg-indigo-50/60 border-b border-indigo-100 flex-wrap">
+                            {[
+                              { label: 'Hadir',  val: totalH,                                             cls: 'bg-emerald-100 text-emerald-700' },
+                              { label: 'Sakit',  val: siswaData.reduce((a,r) => a + r.sk,  0),            cls: 'bg-amber-100 text-amber-700' },
+                              { label: 'Izin',   val: siswaData.reduce((a,r) => a + r.iz,  0),            cls: 'bg-blue-100 text-blue-700' },
+                              { label: 'Alpa',   val: totalAlp,                                           cls: 'bg-rose-100 text-rose-700' },
+                              { label: '% Kelas',val: `${avgPct}%`,                                      cls: avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' : avgPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700' },
+                            ].map(item => (
+                              <div key={item.label} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${item.cls}`}>
+                                <span className="opacity-70">{item.label}</span>
+                                <span>{item.val}</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Tabel detail per siswa */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-100">
+                                  <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-8">No</th>
+                                  <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nama Siswa</th>
+                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-emerald-600 uppercase tracking-wider">H</th>
+                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wider">S</th>
+                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-blue-600 uppercase tracking-wider">I</th>
+                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-rose-600 uppercase tracking-wider">A</th>
+                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">% Hadir</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-50">
+                                {siswaData.map((row, idx) => (
+                                  <tr
+                                    key={row.student.id}
+                                    className={`transition-colors hover:bg-indigo-50/20 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}
+                                  >
+                                    <td className="px-4 py-2.5 text-xs text-slate-400 text-center">{idx + 1}</td>
+                                    <td className="px-4 py-2.5">
+                                      <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
+                                      <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{row.h}</td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-amber-600">{row.sk}</td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-blue-600">{row.iz}</td>
+                                    <td className="px-3 py-2.5 text-center font-bold text-rose-600">{row.alp}</td>
+                                    <td className="px-3 py-2.5 text-center">
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <div className="flex-1 max-w-[60px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full ${
+                                              row.pct >= 75 ? 'bg-emerald-500' :
+                                              row.pct >= 50 ? 'bg-amber-500'   : 'bg-rose-500'
+                                            }`}
+                                            style={{ width: `${row.pct}%` }}
+                                          />
+                                        </div>
+                                        <span className={`text-[10px] font-bold w-8 text-right ${
+                                          row.pct >= 75 ? 'text-emerald-700' :
+                                          row.pct >= 50 ? 'text-amber-700'   : 'text-rose-700'
+                                        }`}>{row.pct}%</span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              {/* Footer total kelas */}
+                              <tfoot>
+                                <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+                                  <td colSpan={2} className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase tracking-wide">
+                                    Total Kelas
+                                  </td>
+                                  {(['h','sk','iz','alp'] as const).map(key => (
+                                    <td key={key} className="px-3 py-2 text-center text-xs font-bold text-indigo-600">
+                                      {siswaData.reduce((a, r) => a + r[key], 0)}
+                                    </td>
+                                  ))}
+                                  <td className="px-3 py-2 text-center">
+                                    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                      avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' :
+                                      avgPct >= 50 ? 'bg-amber-100 text-amber-700'    : 'bg-rose-100 text-rose-700'
+                                    }`}>{avgPct}%</span>
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}
