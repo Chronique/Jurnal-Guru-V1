@@ -7,7 +7,7 @@ import {
   Phone, Users, BookOpen, Search, Save,
   ChevronDown, Star, CheckCircle2, Send,
   Settings, Eye, EyeOff, Loader2, X, CheckCheck,
-  CalendarDays, Clock, RefreshCw, UserCheck, GraduationCap,
+  CalendarDays, Calendar, Clock, RefreshCw, UserCheck, GraduationCap,
 } from 'lucide-react';
 
 type WaliMuridProps = {
@@ -110,7 +110,8 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
   const [sentTsMap,      setSentTsMap]      = useState<Map<string, number>>(loadSentTs);
   const [bulkSentTs,     setBulkSentTs]     = useState<number | null>(loadBulkSentTs);
   const [, setTick] = useState(0);
-  const [expandedMapel, setExpandedMapel] = useState<Set<string>>(new Set());
+  const [rekapView, setRekapView] = useState<'harian' | 'mingguan' | 'bulanan'>('harian');
+  const [expandedPeriod, setExpandedPeriod] = useState<Set<string>>(new Set());
   const [disiplinMsg,    setDisiplinMsg]    = useState('');
   const [disiplinStatus, setDisiplinStatus] = useState<'idle' | 'sending' | 'done'>('idle');
   const [disiplinResult, setDisiplinResult] = useState<{ ok: number; fail: number } | null>(null);
@@ -164,37 +165,130 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
     return Object.values(map).map(g => ({ ...g, subjects: Array.from(g.subjects).sort() }));
   }, [filteredJournals]);
 
-  // Rekap kehadiran per siswa per mapel (lintas guru)
-  const rekapPerMapel = useMemo(() => {
-    // Kelompokkan jurnal per mapel
-    const byMapel: Record<string, JournalEntry[]> = {};
+  // ── REKAP PER HARI ──────────────────────────────────────────────────────────
+  // Untuk setiap tanggal: per siswa ambil 1 status terbaik dari semua mapel hari itu
+  const rekapPerHari = useMemo(() => {
+    const kelSiswa = students
+      .filter(s => s.className === selectedKelas)
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+    // byDate[date][studentId] = Set<status>
+    const byDate = new Map<string, Map<string, Set<string>>>();
     filteredJournals.forEach(j => {
-      if (!byMapel[j.subject]) byMapel[j.subject] = [];
-      byMapel[j.subject].push(j);
+      if (!j.date) return;
+      if (!byDate.has(j.date)) byDate.set(j.date, new Map());
+      const dm = byDate.get(j.date)!;
+      kelSiswa.forEach(s => {
+        const st = j.studentAttendance?.[s.id];
+        if (!st) return;
+        if (!dm.has(s.id)) dm.set(s.id, new Set());
+        dm.get(s.id)!.add(st);
+      });
     });
 
-    return Object.entries(byMapel).map(([subject, jList]) => {
-      const guru = jList[0]?.teacherName ?? '-';
-      const totalPertemuan = jList.length;
+    const pickStatus = (set: Set<string>) => {
+      if (set.has('absent'))     return 'absent';
+      if (set.has('sick'))       return 'sick';
+      if (set.has('permission')) return 'permission';
+      if (set.has('present'))    return 'present';
+      return 'none';
+    };
 
-      const siswaData = students
-        .filter(s => s.className === selectedKelas)
-        .sort((a, b) => a.name.localeCompare(b.name, 'id'))
-        .map(s => {
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, dm]) => {
+        const siswaData = kelSiswa.map(s => ({
+          student: s,
+          status: pickStatus(dm.get(s.id) ?? new Set()),
+        }));
+        const h = siswaData.filter(r => r.status === 'present').length;
+        const s = siswaData.filter(r => r.status === 'sick').length;
+        const i = siswaData.filter(r => r.status === 'permission').length;
+        const a = siswaData.filter(r => r.status === 'absent').length;
+        const mapel = Array.from(new Set(
+          filteredJournals.filter(j => j.date === date).map(j => j.subject)
+        )).join(', ');
+        return { date, siswaData, summary: { h, s, i, a }, mapel };
+      });
+  }, [filteredJournals, students, selectedKelas]);
+
+  // ── REKAP PER MINGGU ─────────────────────────────────────────────────────────
+  // Kelompokkan hari-hari ke dalam minggu (Senin-Minggu ISO)
+  const rekapPerMinggu = useMemo(() => {
+    if (!rekapPerHari.length) return [];
+    const kelSiswa = students
+      .filter(s => s.className === selectedKelas)
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+    const getWeekKey = (dateStr: string) => {
+      const d = new Date(dateStr);
+      const day = d.getDay() === 0 ? 7 : d.getDay(); // Mon=1..Sun=7
+      const mon = new Date(d); mon.setDate(d.getDate() - day + 1);
+      return mon.toISOString().slice(0, 10); // key = Senin ISO
+    };
+
+    const byWeek = new Map<string, typeof rekapPerHari>();
+    rekapPerHari.forEach(dayData => {
+      const wk = getWeekKey(dayData.date);
+      if (!byWeek.has(wk)) byWeek.set(wk, []);
+      byWeek.get(wk)!.push(dayData);
+    });
+
+    return Array.from(byWeek.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([monKey, days]) => {
+        const sun = new Date(monKey); sun.setDate(sun.getDate() + 6);
+        const label = `${new Date(monKey).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })} – ${sun.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+
+        const siswaData = kelSiswa.map(s => {
           let h = 0, sk = 0, iz = 0, alp = 0;
-          jList.forEach(j => {
-            const st = j.studentAttendance?.[s.id];
-            if (st === 'present') h++;
-            else if (st === 'sick') sk++;
+          days.forEach(d => {
+            const st = d.siswaData.find(r => r.student.id === s.id)?.status;
+            if (st === 'present')    h++;
+            else if (st === 'sick')  sk++;
             else if (st === 'permission') iz++;
-            else if (st === 'absent') alp++;
+            else if (st === 'absent')     alp++;
           });
-          const pct = totalPertemuan > 0 ? Math.round((h / totalPertemuan) * 100) : 0;
+          const total = h + sk + iz + alp;
+          const pct = total > 0 ? Math.round((h / total) * 100) : 0;
           return { student: s, h, sk, iz, alp, pct };
         });
 
-      return { subject, guru, totalPertemuan, siswaData };
-    }).sort((a, b) => a.subject.localeCompare(b.subject, 'id'));
+        const totH   = siswaData.reduce((a, r) => a + r.h,   0);
+        const totAlp = siswaData.reduce((a, r) => a + r.alp, 0);
+        const avgPct = siswaData.length > 0
+          ? Math.round(siswaData.reduce((a, r) => a + r.pct, 0) / siswaData.length)
+          : 0;
+        return { weekKey: monKey, label, days: days.length, siswaData, totH, totAlp, avgPct };
+      });
+  }, [rekapPerHari, students, selectedKelas]);
+
+  // ── REKAP BULANAN (semua periode yang aktif) ──────────────────────────────────
+  const rekapBulanan = useMemo(() => {
+    const kelSiswa = students
+      .filter(s => s.className === selectedKelas)
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+    return kelSiswa.map(s => {
+      const byDate = new Map<string, Set<string>>();
+      filteredJournals.forEach(j => {
+        if (!j.date) return;
+        const st = j.studentAttendance?.[s.id];
+        if (!st) return;
+        if (!byDate.has(j.date)) byDate.set(j.date, new Set());
+        byDate.get(j.date)!.add(st);
+      });
+      let h = 0, sk = 0, iz = 0, alp = 0;
+      byDate.forEach(statuses => {
+        if (statuses.has('absent'))          alp++;
+        else if (statuses.has('sick'))       sk++;
+        else if (statuses.has('permission')) iz++;
+        else if (statuses.has('present'))    h++;
+      });
+      const total = h + sk + iz + alp;
+      const pct = total > 0 ? Math.round((h / total) * 100) : 0;
+      return { student: s, h, sk, iz, alp, pct, totalHari: total };
+    });
   }, [filteredJournals, students, selectedKelas]);
 
   // ── Kontak helpers ────────────────────────────────────────────────────────
@@ -575,8 +669,8 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             <div>
               <p className="text-sm font-bold text-indigo-900">Auto-Sinkron Aktif</p>
               <p className="text-xs text-indigo-700 mt-0.5">
-                Data kehadiran & nilai di bawah dikumpulkan otomatis dari <strong>{guruDiKelas.length} guru mapel</strong> yang mengajar di kelas <strong>{selectedKelas}</strong>.
-                Setiap kali guru mapel menyimpan jurnal, data langsung terefleksi di sini.
+                Data kehadiran dikumpulkan dari <strong>{guruDiKelas.length} guru mapel</strong> di kelas <strong>{selectedKelas}</strong>.
+                Kehadiran dihitung <strong>per hari</strong> — berapapun mapel yang diajarkan, jika tidak hadir tetap 1 hari.
               </p>
             </div>
           </div>
@@ -590,7 +684,7 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
             </div>
           ) : (
             <>
-              {/* Daftar guru yang mengajar di kelas ini */}
+              {/* Daftar guru */}
               <div>
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-slate-400" />Guru Mapel di Kelas {selectedKelas}
@@ -616,189 +710,317 @@ export function WaliMurid({ students, journals, lockedKelas, isAdmin = false }: 
                 </div>
               </div>
 
-              {/* Rekap kehadiran per mapel — Accordion/Dropdown */}
+              {/* ── Rekap Kehadiran: sub-tab Harian / Mingguan / Bulanan ── */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                {/* Header + sub-tab switcher */}
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                    <Users className="w-4 h-4 text-slate-400" />Rekap Kehadiran per Mata Pelajaran
+                    <Users className="w-4 h-4 text-slate-400" />Rekap Kehadiran Kelas
+                    <span className="text-xs font-normal text-slate-400 lowercase">(per hari · lintas mapel)</span>
                   </h3>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setExpandedMapel(new Set(rekapPerMapel.map(r => r.subject)))}
-                      className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
-                    >
-                      Buka Semua
-                    </button>
-                    <span className="text-slate-300">·</span>
-                    <button
-                      onClick={() => setExpandedMapel(new Set())}
-                      className="text-xs text-slate-500 hover:text-slate-700 font-semibold"
-                    >
-                      Tutup Semua
-                    </button>
+                  {/* Sub-tab pills */}
+                  <div className="flex items-center bg-slate-100 rounded-xl p-1 gap-0.5">
+                    {(['harian','mingguan','bulanan'] as const).map(v => (
+                      <button
+                        key={v}
+                        onClick={() => { setRekapView(v); setExpandedPeriod(new Set()); }}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all capitalize ${
+                          rekapView === v
+                            ? 'bg-white text-indigo-700 shadow-sm'
+                            : 'text-slate-500 hover:text-slate-700'
+                        }`}
+                      >
+                        {v === 'harian' ? 'Per Hari' : v === 'mingguan' ? 'Per Minggu' : 'Bulanan'}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {rekapPerMapel.map(({ subject, guru, totalPertemuan, siswaData }) => {
-                  const isOpen = expandedMapel.has(subject);
-                  const toggleMapel = () => {
-                    setExpandedMapel(prev => {
-                      const next = new Set(prev);
-                      isOpen ? next.delete(subject) : next.add(subject);
-                      return next;
-                    });
-                  };
-                  const avgPct = siswaData.length > 0
-                    ? Math.round(siswaData.reduce((a, r) => a + r.pct, 0) / siswaData.length)
-                    : 0;
-                  const totalH   = siswaData.reduce((a, r) => a + r.h,   0);
-                  const totalAlp = siswaData.reduce((a, r) => a + r.alp, 0);
-
-                  return (
-                    <div
-                      key={subject}
-                      className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all duration-200 ${
-                        isOpen ? 'border-indigo-200' : 'border-slate-200'
-                      }`}
-                    >
-                      {/* ── Header dropdown (klik untuk buka/tutup) ── */}
-                      <button
-                        type="button"
-                        onClick={() => toggleMapel()}
-                        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50/70 transition-colors select-none"
-                      >
-                        {/* Kiri: ikon + nama mapel + badge guru */}
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-colors ${
-                            isOpen ? 'bg-indigo-600' : 'bg-indigo-50'
-                          }`}>
-                            <BookOpen className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-indigo-600'}`} />
-                          </div>
-                          <div className="text-left min-w-0">
-                            <p className={`text-sm font-bold truncate ${isOpen ? 'text-indigo-700' : 'text-slate-900'}`}>
-                              {subject}
-                            </p>
-                            <p className="text-xs text-slate-400 truncate">
-                              Guru: <span className="font-semibold text-slate-600">{guru}</span>
-                              <span className="mx-1.5 text-slate-300">·</span>
-                              {totalPertemuan} pertemuan
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Kanan: badge ringkasan + chevron */}
-                        <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                          {/* Rata-rata kehadiran kelas */}
-                          <span className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                            avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' :
-                            avgPct >= 50 ? 'bg-amber-100 text-amber-700'    :
-                            'bg-rose-100 text-rose-700'
-                          }`}>
-                            Rata {avgPct}%
-                          </span>
-                          {/* Mini chip hadir/alpa */}
-                          <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
-                            <span className="text-emerald-600">{totalH}H</span>
-                            {totalAlp > 0 && <><span className="text-slate-300">/</span><span className="text-rose-600">{totalAlp}A</span></>}
-                          </span>
-                          <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                        </div>
-                      </button>
-
-                      {/* ── Body: tabel siswa (tampil hanya saat open) ── */}
-                      {isOpen && (
-                        <div className="border-t border-slate-100">
-                          {/* Summary strip */}
-                          <div className="flex items-center gap-3 px-5 py-2.5 bg-indigo-50/60 border-b border-indigo-100 flex-wrap">
-                            {[
-                              { label: 'Hadir',  val: totalH,                                             cls: 'bg-emerald-100 text-emerald-700' },
-                              { label: 'Sakit',  val: siswaData.reduce((a,r) => a + r.sk,  0),            cls: 'bg-amber-100 text-amber-700' },
-                              { label: 'Izin',   val: siswaData.reduce((a,r) => a + r.iz,  0),            cls: 'bg-blue-100 text-blue-700' },
-                              { label: 'Alpa',   val: totalAlp,                                           cls: 'bg-rose-100 text-rose-700' },
-                              { label: '% Kelas',val: `${avgPct}%`,                                      cls: avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' : avgPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700' },
-                            ].map(item => (
-                              <div key={item.label} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${item.cls}`}>
-                                <span className="opacity-70">{item.label}</span>
-                                <span>{item.val}</span>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Tabel detail per siswa */}
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="bg-slate-50 border-b border-slate-100">
-                                  <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider w-8">No</th>
-                                  <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nama Siswa</th>
-                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-emerald-600 uppercase tracking-wider">H</th>
-                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wider">S</th>
-                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-blue-600 uppercase tracking-wider">I</th>
-                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-rose-600 uppercase tracking-wider">A</th>
-                                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">% Hadir</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-50">
-                                {siswaData.map((row, idx) => (
-                                  <tr
-                                    key={row.student.id}
-                                    className={`transition-colors hover:bg-indigo-50/20 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}
-                                  >
-                                    <td className="px-4 py-2.5 text-xs text-slate-400 text-center">{idx + 1}</td>
-                                    <td className="px-4 py-2.5">
-                                      <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
-                                      <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
-                                    </td>
-                                    <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{row.h}</td>
-                                    <td className="px-3 py-2.5 text-center font-bold text-amber-600">{row.sk}</td>
-                                    <td className="px-3 py-2.5 text-center font-bold text-blue-600">{row.iz}</td>
-                                    <td className="px-3 py-2.5 text-center font-bold text-rose-600">{row.alp}</td>
-                                    <td className="px-3 py-2.5 text-center">
-                                      <div className="flex items-center justify-center gap-1.5">
-                                        <div className="flex-1 max-w-[60px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                          <div
-                                            className={`h-full rounded-full ${
-                                              row.pct >= 75 ? 'bg-emerald-500' :
-                                              row.pct >= 50 ? 'bg-amber-500'   : 'bg-rose-500'
-                                            }`}
-                                            style={{ width: `${row.pct}%` }}
-                                          />
-                                        </div>
-                                        <span className={`text-[10px] font-bold w-8 text-right ${
-                                          row.pct >= 75 ? 'text-emerald-700' :
-                                          row.pct >= 50 ? 'text-amber-700'   : 'text-rose-700'
-                                        }`}>{row.pct}%</span>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                              {/* Footer total kelas */}
-                              <tfoot>
-                                <tr className="bg-indigo-50 border-t-2 border-indigo-200">
-                                  <td colSpan={2} className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase tracking-wide">
-                                    Total Kelas
-                                  </td>
-                                  {(['h','sk','iz','alp'] as const).map(key => (
-                                    <td key={key} className="px-3 py-2 text-center text-xs font-bold text-indigo-600">
-                                      {siswaData.reduce((a, r) => a + r[key], 0)}
-                                    </td>
-                                  ))}
-                                  <td className="px-3 py-2 text-center">
-                                    <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                      avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' :
-                                      avgPct >= 50 ? 'bg-amber-100 text-amber-700'    : 'bg-rose-100 text-rose-700'
-                                    }`}>{avgPct}%</span>
-                                  </td>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-                        </div>
-                      )}
+                {/* ─────────────────────────────
+                    VIEW: PER HARI
+                ───────────────────────────── */}
+                {rekapView === 'harian' && (
+                  rekapPerHari.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+                      <p className="text-slate-400 text-sm">Tidak ada data untuk periode ini.</p>
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex justify-end gap-3 pb-1">
+                        <button onClick={() => setExpandedPeriod(new Set(rekapPerHari.map(d => d.date)))} className="text-xs text-indigo-600 font-semibold hover:underline">Buka Semua</button>
+                        <button onClick={() => setExpandedPeriod(new Set())} className="text-xs text-slate-400 font-semibold hover:underline">Tutup Semua</button>
+                      </div>
+                      {rekapPerHari.map(({ date, siswaData, summary, mapel }) => {
+                        const isOpen = expandedPeriod.has(date);
+                        const toggle = () => setExpandedPeriod(prev => { const n = new Set(prev); isOpen ? n.delete(date) : n.add(date); return n; });
+                        const fmt = new Date(date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+                        return (
+                          <div key={date} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isOpen ? 'border-indigo-200' : 'border-slate-200'}`}>
+                            <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/70 transition-colors select-none">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isOpen ? 'bg-indigo-600' : 'bg-indigo-50'}`}>
+                                  <Calendar className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-indigo-500'}`} />
+                                </div>
+                                <div className="text-left min-w-0">
+                                  <p className={`text-sm font-bold ${isOpen ? 'text-indigo-700' : 'text-slate-900'}`}>{fmt}</p>
+                                  <p className="text-[10px] text-slate-400 truncate max-w-[200px]">{mapel || 'Tidak ada mapel'}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                                <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-bold">
+                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">{summary.h} H</span>
+                                  {summary.s > 0 && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">{summary.s} S</span>}
+                                  {summary.i > 0 && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">{summary.i} I</span>}
+                                  {summary.a > 0 && <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-full">{summary.a} A</span>}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                              </div>
+                            </button>
+                            {isOpen && (
+                              <div className="border-t border-slate-100 overflow-x-auto">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-100">
+                                      <th className="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase w-8">No</th>
+                                      <th className="px-4 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Nama Siswa</th>
+                                      <th className="px-4 py-2 text-center text-[10px] font-bold text-slate-500 uppercase">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-50">
+                                    {siswaData.map((row, idx) => {
+                                      const STATUS_LABEL: Record<string,{label:string;cls:string}> = {
+                                        present:    { label: 'Hadir',  cls: 'bg-emerald-100 text-emerald-700' },
+                                        sick:       { label: 'Sakit',  cls: 'bg-amber-100 text-amber-700' },
+                                        permission: { label: 'Izin',   cls: 'bg-blue-100 text-blue-700' },
+                                        absent:     { label: 'Alpa',   cls: 'bg-rose-100 text-rose-700' },
+                                        none:       { label: '—',      cls: 'bg-slate-100 text-slate-400' },
+                                      };
+                                      const s = STATUS_LABEL[row.status] ?? STATUS_LABEL.none;
+                                      return (
+                                        <tr key={row.student.id} className={`hover:bg-indigo-50/20 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                                          <td className="px-3 py-2.5 text-xs text-slate-400 text-center">{idx + 1}</td>
+                                          <td className="px-4 py-2.5">
+                                            <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
+                                          </td>
+                                          <td className="px-4 py-2.5 text-center">
+                                            <span className={`inline-flex px-3 py-1 rounded-full text-[10px] font-bold ${s.cls}`}>{s.label}</span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+                                      <td colSpan={2} className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase">Total</td>
+                                      <td className="px-4 py-2 text-center">
+                                        <span className="text-[10px] font-bold text-indigo-600">
+                                          {summary.h}H · {summary.s}S · {summary.i}I · {summary.a}A
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* ─────────────────────────────
+                    VIEW: PER MINGGU
+                ───────────────────────────── */}
+                {rekapView === 'mingguan' && (
+                  rekapPerMinggu.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+                      <p className="text-slate-400 text-sm">Tidak ada data untuk periode ini.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex justify-end gap-3 pb-1">
+                        <button onClick={() => setExpandedPeriod(new Set(rekapPerMinggu.map(w => w.weekKey)))} className="text-xs text-indigo-600 font-semibold hover:underline">Buka Semua</button>
+                        <button onClick={() => setExpandedPeriod(new Set())} className="text-xs text-slate-400 font-semibold hover:underline">Tutup Semua</button>
+                      </div>
+                      {rekapPerMinggu.map(({ weekKey, label, days, siswaData, totH, totAlp, avgPct }) => {
+                        const isOpen = expandedPeriod.has(weekKey);
+                        const toggle = () => setExpandedPeriod(prev => { const n = new Set(prev); isOpen ? n.delete(weekKey) : n.add(weekKey); return n; });
+                        return (
+                          <div key={weekKey} className={`bg-white rounded-2xl border shadow-sm overflow-hidden ${isOpen ? 'border-indigo-200' : 'border-slate-200'}`}>
+                            <button type="button" onClick={toggle} className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/70 transition-colors select-none">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isOpen ? 'bg-indigo-600' : 'bg-slate-100'}`}>
+                                  <CalendarDays className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-slate-500'}`} />
+                                </div>
+                                <div className="text-left min-w-0">
+                                  <p className={`text-sm font-bold ${isOpen ? 'text-indigo-700' : 'text-slate-900'}`}>{label}</p>
+                                  <p className="text-[10px] text-slate-400">{days} hari belajar</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                                <span className={`hidden sm:inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' : avgPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                                  Rata {avgPct}%
+                                </span>
+                                <span className="hidden sm:flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full">
+                                  <span className="text-emerald-600">{totH}H</span>
+                                  {totAlp > 0 && <><span className="text-slate-300">/</span><span className="text-rose-600">{totAlp}A</span></>}
+                                </span>
+                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                              </div>
+                            </button>
+                            {isOpen && (
+                              <div className="border-t border-slate-100">
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="bg-slate-50 border-b border-slate-100">
+                                        <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase w-8">No</th>
+                                        <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase">Nama Siswa</th>
+                                        <th className="px-3 py-2.5 text-center text-[10px] font-bold text-emerald-600 uppercase">H</th>
+                                        <th className="px-3 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase">S</th>
+                                        <th className="px-3 py-2.5 text-center text-[10px] font-bold text-blue-600 uppercase">I</th>
+                                        <th className="px-3 py-2.5 text-center text-[10px] font-bold text-rose-600 uppercase">A</th>
+                                        <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase">% Hadir</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                      {siswaData.map((row, idx) => (
+                                        <tr key={row.student.id} className={`hover:bg-indigo-50/20 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                                          <td className="px-3 py-2.5 text-xs text-slate-400 text-center">{idx + 1}</td>
+                                          <td className="px-4 py-2.5">
+                                            <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
+                                            <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
+                                          </td>
+                                          <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{row.h}</td>
+                                          <td className="px-3 py-2.5 text-center font-bold text-amber-600">{row.sk}</td>
+                                          <td className="px-3 py-2.5 text-center font-bold text-blue-600">{row.iz}</td>
+                                          <td className="px-3 py-2.5 text-center font-bold text-rose-600">{row.alp}</td>
+                                          <td className="px-3 py-2.5 text-center">
+                                            <div className="flex items-center justify-center gap-1.5">
+                                              <div className="flex-1 max-w-[50px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                <div className={`h-full rounded-full ${row.pct >= 75 ? 'bg-emerald-500' : row.pct >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${row.pct}%` }} />
+                                              </div>
+                                              <span className={`text-[10px] font-bold w-8 text-right ${row.pct >= 75 ? 'text-emerald-700' : row.pct >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>{row.pct}%</span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot>
+                                      <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+                                        <td colSpan={2} className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase">Total Kelas</td>
+                                        {(['h','sk','iz','alp'] as const).map(k => (
+                                          <td key={k} className="px-3 py-2 text-center text-xs font-bold text-indigo-600">
+                                            {siswaData.reduce((a, r) => a + r[k], 0)}
+                                          </td>
+                                        ))}
+                                        <td className="px-3 py-2 text-center">
+                                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${avgPct >= 75 ? 'bg-emerald-100 text-emerald-700' : avgPct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{avgPct}%</span>
+                                        </td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
+
+                {/* ─────────────────────────────
+                    VIEW: BULANAN (ringkasan keseluruhan)
+                ───────────────────────────── */}
+                {rekapView === 'bulanan' && (
+                  rekapBulanan.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center">
+                      <p className="text-slate-400 text-sm">Tidak ada data untuk periode ini.</p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                      {/* Summary kelas */}
+                      <div className="flex items-center gap-3 px-5 py-3 bg-indigo-50 border-b border-indigo-100 flex-wrap">
+                        {[
+                          { label: 'Total Hari', val: rekapPerHari.length,                                                          cls: 'bg-white text-indigo-700 border border-indigo-200' },
+                          { label: 'Hadir',      val: rekapBulanan.reduce((a, r) => a + r.h,   0),                                  cls: 'bg-emerald-100 text-emerald-700' },
+                          { label: 'Sakit',      val: rekapBulanan.reduce((a, r) => a + r.sk,  0),                                  cls: 'bg-amber-100 text-amber-700' },
+                          { label: 'Izin',       val: rekapBulanan.reduce((a, r) => a + r.iz,  0),                                  cls: 'bg-blue-100 text-blue-700' },
+                          { label: 'Alpa',       val: rekapBulanan.reduce((a, r) => a + r.alp, 0),                                  cls: 'bg-rose-100 text-rose-700' },
+                          { label: '% Rata Kelas', val: `${rekapBulanan.length > 0 ? Math.round(rekapBulanan.reduce((a,r) => a+r.pct,0)/rekapBulanan.length) : 0}%`,
+                            cls: (() => { const p = rekapBulanan.length > 0 ? Math.round(rekapBulanan.reduce((a,r)=>a+r.pct,0)/rekapBulanan.length) : 0; return p>=75?'bg-emerald-100 text-emerald-700':p>=50?'bg-amber-100 text-amber-700':'bg-rose-100 text-rose-700'; })() },
+                        ].map(item => (
+                          <div key={item.label} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${item.cls}`}>
+                            <span className="opacity-60">{item.label}</span><span>{item.val}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-100">
+                              <th className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase w-8">No</th>
+                              <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase">Nama Siswa</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-emerald-600 uppercase">H</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-amber-600 uppercase">S</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-blue-600 uppercase">I</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-rose-600 uppercase">A</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase">Total Hari</th>
+                              <th className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase">% Hadir</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {rekapBulanan.map((row, idx) => (
+                              <tr key={row.student.id} className={`hover:bg-indigo-50/20 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                                <td className="px-3 py-2.5 text-xs text-slate-400 text-center">{idx + 1}</td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-sm font-medium text-slate-900">{row.student.name}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">{row.student.nis}</p>
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-bold text-emerald-700">{row.h}</td>
+                                <td className="px-3 py-2.5 text-center font-bold text-amber-600">{row.sk}</td>
+                                <td className="px-3 py-2.5 text-center font-bold text-blue-600">{row.iz}</td>
+                                <td className="px-3 py-2.5 text-center font-bold text-rose-600">{row.alp}</td>
+                                <td className="px-3 py-2.5 text-center text-slate-600 font-semibold">{row.totalHari}</td>
+                                <td className="px-3 py-2.5 text-center">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <div className="flex-1 max-w-[50px] bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                      <div className={`h-full rounded-full ${row.pct >= 75 ? 'bg-emerald-500' : row.pct >= 50 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${row.pct}%` }} />
+                                    </div>
+                                    <span className={`text-[10px] font-bold w-8 text-right ${row.pct >= 75 ? 'text-emerald-700' : row.pct >= 50 ? 'text-amber-700' : 'text-rose-700'}`}>{row.pct}%</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr className="bg-indigo-50 border-t-2 border-indigo-200">
+                              <td colSpan={2} className="px-4 py-2 text-[10px] font-bold text-indigo-700 uppercase">Total Kelas</td>
+                              {(['h','sk','iz','alp'] as const).map(k => (
+                                <td key={k} className="px-3 py-2 text-center text-xs font-bold text-indigo-600">
+                                  {rekapBulanan.reduce((a, r) => a + r[k], 0)}
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 text-center text-xs font-bold text-indigo-600">
+                                {rekapBulanan.reduce((a, r) => a + r.totalHari, 0)}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {(() => {
+                                  const p = rekapBulanan.length > 0 ? Math.round(rekapBulanan.reduce((a,r) => a + r.pct, 0) / rekapBulanan.length) : 0;
+                                  return <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${p >= 75 ? 'bg-emerald-100 text-emerald-700' : p >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>{p}%</span>;
+                                })()}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    </div>
+                  )
+                )}
+
               </div>
             </>
           )}
