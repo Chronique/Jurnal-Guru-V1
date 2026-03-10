@@ -3,6 +3,6 @@
   "target": {
     "namespace": "android_app",
     "package_name": "app.vercel.jurnal_guru_v1_blue.twa",
-    "sha256_cert_fingerprints": ["14:E9:5C:8D:8E:2C:88:0E:B2:9E:88:42:65:FE:15:B0:A7:78:53:A4:66:4F:7C:D2:C3:A4:19:A1:27:75:AB:29"]
+    "sha256_cert_fingerprints": ["34:FC:0E:C9:E0:B7:5C:82:B8:12:95:40:9C:05:12:A5:08:D0:37:3D:CD:44:80:4A:9B:F9:C6:5A:25:70:52:5A"]
   }
 }]
